@@ -81,6 +81,12 @@ export default function TeamSetupPage() {
                   <p className="text-lg font-semibold text-zinc-100">{selectedTeam.entrant}</p>
                   <p className="text-zinc-400">Constructor: {selectedTeam.constructor}</p>
                   <p className="text-zinc-400">Chassis: {selectedTeam.chassis}</p>
+                  <Link
+                    href={`/dashboard?teamId=${selectedTeam.id}`}
+                    className="mt-2 inline-flex rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-500"
+                  >
+                    Start Career
+                  </Link>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-zinc-400">Choose a team to continue.</p>
@@ -107,6 +113,12 @@ export default function TeamSetupPage() {
                   <p>
                     Drivers: {customTeam.driverOne} · {customTeam.driverTwo}
                   </p>
+                  <Link
+                    href={`/dashboard?entrant=${encodeURIComponent(customTeam.constructorName)}&constructor=${encodeURIComponent(customTeam.constructorName)}&chassis=${encodeURIComponent(formatChassisCode(customTeam.chassisPrefix, seasonYear, customTeam.chassisNamingPattern))}&powerUnit=${encodeURIComponent("Custom Power Unit")}&driverOne=${encodeURIComponent(customTeam.driverOne)}&driverTwo=${encodeURIComponent(customTeam.driverTwo)}`}
+                    className="mt-2 inline-flex rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-500"
+                  >
+                    Enter Championship
+                  </Link>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-zinc-400">
