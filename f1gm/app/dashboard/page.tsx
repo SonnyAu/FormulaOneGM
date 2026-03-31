@@ -64,6 +64,7 @@ export default async function DashboardPage({
     standings[standings.length - 1];
 
   const raceRecord = selectedTeam ? "0 podiums · 0 wins" : "Debut season";
+  const winsPodiumsRecord = "0-0";
 
   return (
     <main className="min-h-screen bg-zinc-950 px-4 py-6 text-zinc-100 sm:px-6 lg:px-8">
@@ -113,7 +114,8 @@ export default async function DashboardPage({
 
           <article className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
             <div>
-              <p className="text-5xl font-semibold">0-0</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Wins-Podiums</p>
+              <p className="text-5xl font-semibold">{winsPodiumsRecord}</p>
               <p className="text-2xl text-zinc-300">{formatOrdinal(selectedStanding.position)} in standings</p>
             </div>
 

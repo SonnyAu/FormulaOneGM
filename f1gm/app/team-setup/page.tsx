@@ -18,6 +18,19 @@ function formatChassisCode(prefix: string, year: number, pattern: CustomTeamDraf
   return `${prefix} 01`;
 }
 
+function buildCustomDashboardHref(team: CustomTeamDraft, season: number) {
+  const params = new URLSearchParams({
+    entrant: team.constructorName,
+    constructor: team.constructorName,
+    chassis: formatChassisCode(team.chassisPrefix, season, team.chassisNamingPattern),
+    powerUnit: "Custom Power Unit",
+    driverOne: team.driverOne,
+    driverTwo: team.driverTwo,
+  });
+
+  return `/dashboard?${params.toString()}`;
+}
+
 export default function TeamSetupPage() {
   const [mode, setMode] = useState<ViewMode>("select");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(teams[0]?.id ?? null);
@@ -85,7 +98,7 @@ export default function TeamSetupPage() {
                     href={`/dashboard?teamId=${selectedTeam.id}`}
                     className="mt-2 inline-flex rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-500"
                   >
-                    Start Career
+                    Enter Dashboard
                   </Link>
                 </div>
               ) : (
@@ -114,10 +127,10 @@ export default function TeamSetupPage() {
                     Drivers: {customTeam.driverOne} · {customTeam.driverTwo}
                   </p>
                   <Link
-                    href={`/dashboard?entrant=${encodeURIComponent(customTeam.constructorName)}&constructor=${encodeURIComponent(customTeam.constructorName)}&chassis=${encodeURIComponent(formatChassisCode(customTeam.chassisPrefix, seasonYear, customTeam.chassisNamingPattern))}&powerUnit=${encodeURIComponent("Custom Power Unit")}&driverOne=${encodeURIComponent(customTeam.driverOne)}&driverTwo=${encodeURIComponent(customTeam.driverTwo)}`}
+                    href={buildCustomDashboardHref(customTeam, seasonYear)}
                     className="mt-2 inline-flex rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-500"
                   >
-                    Enter Championship
+                    Enter Dashboard
                   </Link>
                 </div>
               ) : (
