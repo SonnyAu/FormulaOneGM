@@ -18,6 +18,19 @@ function formatChassisCode(prefix: string, year: number, pattern: CustomTeamDraf
   return `${prefix} 01`;
 }
 
+function buildCustomDashboardHref(team: CustomTeamDraft, season: number) {
+  const params = new URLSearchParams({
+    entrant: team.constructorName,
+    constructor: team.constructorName,
+    chassis: formatChassisCode(team.chassisPrefix, season, team.chassisNamingPattern),
+    powerUnit: "Custom Power Unit",
+    driverOne: team.driverOne,
+    driverTwo: team.driverTwo,
+  });
+
+  return `/dashboard?${params.toString()}`;
+}
+
 export default function TeamSetupPage() {
   const [mode, setMode] = useState<ViewMode>("select");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(teams[0]?.id ?? null);
@@ -81,6 +94,12 @@ export default function TeamSetupPage() {
                   <p className="text-lg font-semibold text-zinc-100">{selectedTeam.entrant}</p>
                   <p className="text-zinc-400">Constructor: {selectedTeam.constructor}</p>
                   <p className="text-zinc-400">Chassis: {selectedTeam.chassis}</p>
+                  <Link
+                    href={`/dashboard?teamId=${selectedTeam.id}`}
+                    className="mt-2 inline-flex rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-500"
+                  >
+                    Enter Dashboard
+                  </Link>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-zinc-400">Choose a team to continue.</p>
@@ -107,6 +126,12 @@ export default function TeamSetupPage() {
                   <p>
                     Drivers: {customTeam.driverOne} · {customTeam.driverTwo}
                   </p>
+                  <Link
+                    href={buildCustomDashboardHref(customTeam, seasonYear)}
+                    className="mt-2 inline-flex rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-500"
+                  >
+                    Enter Dashboard
+                  </Link>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-zinc-400">
