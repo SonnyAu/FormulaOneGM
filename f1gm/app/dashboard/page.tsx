@@ -1,24 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
-import { DriverLineupTable, StandingsTable } from "@/components/dashboard/DashboardTables";
-import { Headlines, LinkList, RecordPanel } from "@/components/dashboard/DashboardWidgets";
+import {
+  DriverLineupTable,
+  StandingsTable,
+} from "@/components/dashboard/DashboardTables";
+import {
+  Headlines,
+  LinkList,
+  RecordPanel,
+} from "@/components/dashboard/DashboardWidgets";
 import { driverMap } from "@/data/drivers";
-import { teams } from "@/data/teams";
-import { formatCustomChassis, loadTeamSelection } from "@/lib/teamSelection";
+import { abbreviateConstructorName, teams } from "@/data/teams";
+import {
+  formatCustomChassis,
+  getTeamSelectionStorageServerSnapshot,
+  getTeamSelectionStorageSnapshot,
+  parseTeamSelectionRaw,
+  subscribeTeamSelection,
+} from "@/lib/teamSelection";
 import { Driver, TeamSelection } from "@/types/f1";
 
 const seasonYear = 2026;
-
-const defaultStandings = teams.map((team, index) => ({
-  pos: index + 1,
-  team: team.entrant,
-  pts: Math.max(0, 184 - index * 14),
-}));
 
 function buildCustomDrivers(selection: TeamSelection): Driver[] {
   if (selection.mode !== "custom") {
@@ -41,16 +48,19 @@ function buildCustomDrivers(selection: TeamSelection): Driver[] {
   ];
 }
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const searchParams = useSearchParams();
-  const [selection, setSelection] = useState<TeamSelection | null>(null);
 
-  useEffect(() => {
-    const stored = loadTeamSelection();
-    if (stored) {
-      setSelection(stored);
-    }
-  }, []);
+  const selectionRaw = useSyncExternalStore(
+    subscribeTeamSelection,
+    getTeamSelectionStorageSnapshot,
+    getTeamSelectionStorageServerSnapshot,
+  );
+
+  const selection = useMemo(
+    () => parseTeamSelectionRaw(selectionRaw),
+    [selectionRaw],
+  );
 
   const selectedExistingTeam = useMemo(() => {
     const teamIdFromQuery = searchParams.get("team");
@@ -66,15 +76,14 @@ export default function DashboardPage() {
     return null;
   }, [selection, searchParams]);
 
-  const teamName =
-    selection?.mode === "custom"
-      ? selection.team.constructorName
-      : selectedExistingTeam?.entrant ?? "Unassigned Team";
-
   const chassisName =
     selection?.mode === "custom"
-      ? formatCustomChassis(selection.team.chassisPrefix, selection.team.chassisNamingPattern, seasonYear)
-      : selectedExistingTeam?.chassis ?? "—";
+      ? formatCustomChassis(
+          selection.team.chassisPrefix,
+          selection.team.chassisNamingPattern,
+          seasonYear,
+        )
+      : (selectedExistingTeam?.chassis ?? "—");
 
   const drivers = useMemo(() => {
     if (selection?.mode === "custom") {
@@ -87,26 +96,86 @@ export default function DashboardPage() {
 
     return selectedExistingTeam.driverIds
       .map((driverId) => driverMap.get(driverId))
-      .filter((driver): driver is NonNullable<typeof driver> => driver !== undefined);
+      .filter(
+        (driver): driver is NonNullable<typeof driver> => driver !== undefined,
+      );
   }, [selection, selectedExistingTeam]);
+
+  const teamName =
+    selection?.mode === "custom"
+      ? selection.team.constructorName
+      : (selectedExistingTeam?.entrant ?? "Unassigned Team");
+
+  const teamNameAbbrev = useMemo(() => {
+    if (selection?.mode === "custom") {
+      return abbreviateConstructorName(selection.team.constructorName);
+    }
+    return selectedExistingTeam?.abbreviation ?? "—";
+  }, [selection, selectedExistingTeam]);
+
+  const constructorStandings = useMemo(() => {
+    const base = teams.map((team, index) => ({
+      pos: index + 1,
+      team: team.abbreviation,
+      pts: 0,
+    }));
+    if (!base.some((row) => row.team === teamNameAbbrev)) {
+      return [
+        ...base,
+        { pos: base.length + 1, team: teamNameAbbrev, pts: 0 },
+      ];
+    }
+    return base;
+  }, [teamNameAbbrev]);
+
+  const driverStandings = useMemo(() => {
+    const rows: { pos: number; name: string; team: string; pts: number }[] =
+      [];
+    let pos = 1;
+    for (const team of teams) {
+      for (const driverId of team.driverIds) {
+        const d = driverMap.get(driverId);
+        if (d) {
+          rows.push({
+            pos: pos++,
+            name: d.name,
+            team: team.abbreviation,
+            pts: 0,
+          });
+        }
+      }
+    }
+    if (selection?.mode === "custom") {
+      for (const d of buildCustomDrivers(selection)) {
+        rows.push({
+          pos: pos++,
+          name: d.name,
+          team: teamNameAbbrev,
+          pts: 0,
+        });
+      }
+    }
+    return rows;
+  }, [selection, teamNameAbbrev]);
 
   if (!selection && !selectedExistingTeam) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-100">
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center">
           <h1 className="text-2xl font-semibold">No active career found</h1>
-          <p className="mt-2 text-zinc-400">Choose a team first to generate your management dashboard.</p>
-          <Link href="/team-setup" className="mt-4 inline-flex rounded bg-red-600 px-4 py-2 text-sm font-medium text-white">
+          <p className="mt-2 text-zinc-400">
+            Choose a team first to generate your management dashboard.
+          </p>
+          <Link
+            href="/team-setup"
+            className="mt-4 inline-flex rounded bg-red-600 px-4 py-2 text-sm font-medium text-white"
+          >
             Go to Team Setup
           </Link>
         </section>
       </main>
     );
   }
-
-  const standings = defaultStandings.some((row) => row.team === teamName)
-    ? defaultStandings
-    : [...defaultStandings.slice(0, 10), { pos: 11, team: teamName, pts: 8 }];
 
   const leaderOne = drivers[0]?.name ?? "Lead Driver";
   const leaderTwo = drivers[1]?.name ?? "Second Driver";
@@ -118,18 +187,25 @@ export default function DashboardPage() {
       sidebar={<DashboardSidebar activeLabel="Dashboard" />}
     >
       <div className="grid gap-3 xl:grid-cols-[290px_1fr_340px]">
-        <StandingsTable standings={standings} highlightedTeam={teamName} />
+        <StandingsTable
+          constructorStandings={constructorStandings}
+          driverStandings={driverStandings}
+          highlightedTeam={teamNameAbbrev}
+        />
 
         <div className="space-y-3">
-          <RecordPanel raceRecord="0-0" championshipPos="14th in championship" />
+          <RecordPanel
+            raceRecord="0-0"
+            championshipPos="0 pts · preseason"
+          />
 
           <div className="grid gap-3 md:grid-cols-2">
             <LinkList
               title="Team Leaders"
               rows={[
-                { label: `${leaderOne}  |  best finish`, value: "P6" },
-                { label: `${leaderTwo}  |  avg quali`, value: "P11" },
-                { label: `${leaderOne}  |  overtakes`, value: "9" },
+                { label: `${leaderOne}  |  best finish`, value: "—" },
+                { label: `${leaderTwo}  |  avg quali`, value: "—" },
+                { label: `${leaderOne}  |  overtakes`, value: "0" },
               ]}
               footerLink="Full roster"
             />
@@ -137,9 +213,9 @@ export default function DashboardPage() {
             <LinkList
               title="Team Stats"
               rows={[
-                { label: "Points", value: "0.0 (3rd target)" },
-                { label: "Allowed incidents", value: "0.0 (safety target)" },
-                { label: "Avg pit stop", value: "2.49s" },
+                { label: "Points", value: "0" },
+                { label: "Allowed incidents", value: "0" },
+                { label: "Avg pit stop", value: "—" },
                 { label: "Chassis", value: chassisName },
               ]}
               footerLink="Team stats"
@@ -176,5 +252,19 @@ export default function DashboardPage() {
         <DriverLineupTable drivers={drivers} />
       </div>
     </DashboardShell>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-400">
+          Loading dashboard…
+        </main>
+      }
+    >
+      <DashboardPageContent />
+    </Suspense>
   );
 }

@@ -7,7 +7,10 @@ export type Driver = {
 
 export type Team = {
   id: string;
+  /** Full entry name (e.g. sponsor + team). */
   entrant: string;
+  /** Short code for standings / timing (typically 3 letters). */
+  abbreviation: string;
   constructor: string;
   chassis: string;
   power_unit: string;

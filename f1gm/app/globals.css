@@ -24,3 +24,27 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Standings tables: thin scrollbar, low contrast (Firefox + WebKit) */
+.standings-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(63 63 70 / 0.35) transparent;
+}
+
+.standings-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.standings-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.standings-scroll::-webkit-scrollbar-thumb {
+  background-color: rgb(63 63 70 / 0.35);
+  border-radius: 9999px;
+}
+
+.standings-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(82 82 91 / 0.45);
+}
