@@ -34,3 +34,12 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Local-first simulation architecture
+
+- Save data is persisted client-side in IndexedDB (`lib/storage/indexedDb.ts` + `lib/storage/saveRepository.ts`).
+- Active save state is loaded into memory through `simulationSession` (`lib/sim/session.ts`) and used for all simulation work.
+- Weekly progression runs through `runSimulationTick` (`lib/sim/engine.ts`), then checkpoints back to IndexedDB.
+- Simulation subsystems are split by responsibility under `lib/sim/subsystems/*` (AI, decision validation, economy, development, race).
+- UI consumes typed service actions instead of mutating core state directly.
+
