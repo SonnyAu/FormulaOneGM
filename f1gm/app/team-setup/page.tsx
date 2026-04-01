@@ -2,36 +2,18 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CreateTeamForm, type CustomTeamDraft } from "@/components/team/CreateTeamForm";
 import { TeamList } from "@/components/team/TeamList";
 import { teams } from "@/data/teams";
+import { formatCustomChassis, saveTeamSelection } from "@/lib/teamSelection";
 
 type ViewMode = "select" | "create";
 
 const seasonYear = 2026;
 
-function formatChassisCode(prefix: string, year: number, pattern: CustomTeamDraft["chassisNamingPattern"]) {
-  if (pattern === "year-based") {
-    return `${prefix}-${year.toString().slice(-2)}`;
-  }
-
-  return `${prefix} 01`;
-}
-
-function buildCustomDashboardHref(team: CustomTeamDraft, season: number) {
-  const params = new URLSearchParams({
-    entrant: team.constructorName,
-    constructor: team.constructorName,
-    chassis: formatChassisCode(team.chassisPrefix, season, team.chassisNamingPattern),
-    powerUnit: "Custom Power Unit",
-    driverOne: team.driverOne,
-    driverTwo: team.driverTwo,
-  });
-
-  return `/dashboard?${params.toString()}`;
-}
-
 export default function TeamSetupPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<ViewMode>("select");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(teams[0]?.id ?? null);
   const [customTeam, setCustomTeam] = useState<CustomTeamDraft | null>(null);
@@ -40,6 +22,24 @@ export default function TeamSetupPage() {
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [selectedTeamId],
   );
+
+  const continueWithExistingTeam = () => {
+    if (!selectedTeamId) {
+      return;
+    }
+
+    saveTeamSelection({ mode: "existing", teamId: selectedTeamId });
+    router.push(`/dashboard?team=${selectedTeamId}`);
+  };
+
+  const continueWithCustomTeam = () => {
+    if (!customTeam) {
+      return;
+    }
+
+    saveTeamSelection({ mode: "custom", team: customTeam });
+    router.push("/dashboard?team=custom");
+  };
 
   return (
     <main className="min-h-screen bg-zinc-950 px-4 py-8 text-zinc-100 sm:px-6 lg:px-8">
@@ -94,12 +94,14 @@ export default function TeamSetupPage() {
                   <p className="text-lg font-semibold text-zinc-100">{selectedTeam.entrant}</p>
                   <p className="text-zinc-400">Constructor: {selectedTeam.constructor}</p>
                   <p className="text-zinc-400">Chassis: {selectedTeam.chassis}</p>
-                  <Link
-                    href={`/dashboard?teamId=${selectedTeam.id}`}
-                    className="mt-2 inline-flex rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-500"
+
+                  <button
+                    type="button"
+                    onClick={continueWithExistingTeam}
+                    className="mt-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500"
                   >
-                    Enter Dashboard
-                  </Link>
+                    Start Career Dashboard
+                  </button>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-zinc-400">Choose a team to continue.</p>
@@ -117,21 +119,19 @@ export default function TeamSetupPage() {
                   <p className="text-lg font-semibold text-zinc-100">{customTeam.constructorName}</p>
                   <p>Team Base: {customTeam.teamBase}</p>
                   <p>
-                    Chassis: {formatChassisCode(
-                      customTeam.chassisPrefix,
-                      seasonYear,
-                      customTeam.chassisNamingPattern,
-                    )}
+                    Chassis: {formatCustomChassis(customTeam.chassisPrefix, customTeam.chassisNamingPattern, seasonYear)}
                   </p>
                   <p>
                     Drivers: {customTeam.driverOne} · {customTeam.driverTwo}
                   </p>
-                  <Link
-                    href={buildCustomDashboardHref(customTeam, seasonYear)}
-                    className="mt-2 inline-flex rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-500"
+
+                  <button
+                    type="button"
+                    onClick={continueWithCustomTeam}
+                    className="mt-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500"
                   >
-                    Enter Dashboard
-                  </Link>
+                    Start Career Dashboard
+                  </button>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-zinc-400">

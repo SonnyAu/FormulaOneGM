@@ -1,175 +1,180 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
+import { DriverLineupTable, StandingsTable } from "@/components/dashboard/DashboardTables";
+import { Headlines, LinkList, RecordPanel } from "@/components/dashboard/DashboardWidgets";
 import { driverMap } from "@/data/drivers";
 import { teams } from "@/data/teams";
-
-type DashboardSearchParams = {
-  teamId?: string;
-  entrant?: string;
-  constructor?: string;
-  chassis?: string;
-  powerUnit?: string;
-  driverOne?: string;
-  driverTwo?: string;
-};
+import { formatCustomChassis, loadTeamSelection } from "@/lib/teamSelection";
+import { Driver, TeamSelection } from "@/types/f1";
 
 const seasonYear = 2026;
 
-function formatOrdinal(value: number) {
-  const teen = value % 100;
-  if (teen >= 11 && teen <= 13) {
-    return `${value}th`;
+const defaultStandings = teams.map((team, index) => ({
+  pos: index + 1,
+  team: team.entrant,
+  pts: Math.max(0, 184 - index * 14),
+}));
+
+function buildCustomDrivers(selection: TeamSelection): Driver[] {
+  if (selection.mode !== "custom") {
+    return [];
   }
 
-  const remainder = value % 10;
-  if (remainder === 1) {
-    return `${value}st`;
-  }
-  if (remainder === 2) {
-    return `${value}nd`;
-  }
-  if (remainder === 3) {
-    return `${value}rd`;
-  }
-
-  return `${value}th`;
+  return [
+    {
+      id: `${selection.team.driverOne.toLowerCase().replace(/\s+/g, "-")}-01`,
+      name: selection.team.driverOne,
+      number: 27,
+      nationality: "TBD",
+    },
+    {
+      id: `${selection.team.driverTwo.toLowerCase().replace(/\s+/g, "-")}-02`,
+      name: selection.team.driverTwo,
+      number: 88,
+      nationality: "TBD",
+    },
+  ];
 }
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<DashboardSearchParams>;
-}) {
-  const params = await searchParams;
-  const selectedTeam = teams.find((team) => team.id === params.teamId) ?? null;
+export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  const [selection, setSelection] = useState<TeamSelection | null>(null);
 
-  const entrant = selectedTeam?.entrant ?? params.entrant ?? "Custom Entry";
-  const constructor = selectedTeam?.constructor ?? params.constructor ?? "Independent";
-  const chassis = selectedTeam?.chassis ?? params.chassis ?? "TBD";
-  const powerUnit = selectedTeam?.power_unit ?? params.powerUnit ?? "TBD";
-  const drivers = selectedTeam
-    ? selectedTeam.driverIds
-        .map((driverId) => driverMap.get(driverId))
-        .filter((driver): driver is NonNullable<typeof driver> => driver !== undefined)
-        .map((driver) => driver.name)
-    : [params.driverOne, params.driverTwo].filter((driver): driver is string => Boolean(driver));
+  useEffect(() => {
+    const stored = loadTeamSelection();
+    if (stored) {
+      setSelection(stored);
+    }
+  }, []);
 
-  const standings = teams.map((team, index) => ({
-    position: index + 1,
-    team: team.constructor,
-    points: Math.max(0, 215 - index * 18),
-  }));
+  const selectedExistingTeam = useMemo(() => {
+    const teamIdFromQuery = searchParams.get("team");
 
-  const selectedStanding =
-    standings.find((standing) => standing.team === constructor) ??
-    standings[standings.length - 1];
+    if (selection?.mode === "existing") {
+      return teams.find((team) => team.id === selection.teamId) ?? null;
+    }
 
-  const raceRecord = selectedTeam ? "0 podiums · 0 wins" : "Debut season";
-  const winsPodiumsRecord = "0-0";
+    if (teamIdFromQuery && teamIdFromQuery !== "custom") {
+      return teams.find((team) => team.id === teamIdFromQuery) ?? null;
+    }
+
+    return null;
+  }, [selection, searchParams]);
+
+  const teamName =
+    selection?.mode === "custom"
+      ? selection.team.constructorName
+      : selectedExistingTeam?.entrant ?? "Unassigned Team";
+
+  const chassisName =
+    selection?.mode === "custom"
+      ? formatCustomChassis(selection.team.chassisPrefix, selection.team.chassisNamingPattern, seasonYear)
+      : selectedExistingTeam?.chassis ?? "—";
+
+  const drivers = useMemo(() => {
+    if (selection?.mode === "custom") {
+      return buildCustomDrivers(selection);
+    }
+
+    if (!selectedExistingTeam) {
+      return [];
+    }
+
+    return selectedExistingTeam.driverIds
+      .map((driverId) => driverMap.get(driverId))
+      .filter((driver): driver is NonNullable<typeof driver> => driver !== undefined);
+  }, [selection, selectedExistingTeam]);
+
+  if (!selection && !selectedExistingTeam) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-100">
+        <section className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center">
+          <h1 className="text-2xl font-semibold">No active career found</h1>
+          <p className="mt-2 text-zinc-400">Choose a team first to generate your management dashboard.</p>
+          <Link href="/team-setup" className="mt-4 inline-flex rounded bg-red-600 px-4 py-2 text-sm font-medium text-white">
+            Go to Team Setup
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  const standings = defaultStandings.some((row) => row.team === teamName)
+    ? defaultStandings
+    : [...defaultStandings.slice(0, 10), { pos: 11, team: teamName, pts: 8 }];
+
+  const leaderOne = drivers[0]?.name ?? "Lead Driver";
+  const leaderTwo = drivers[1]?.name ?? "Second Driver";
 
   return (
-    <main className="min-h-screen bg-zinc-950 px-4 py-6 text-zinc-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-800 pb-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">
-              {seasonYear} preseason · Idle
-            </p>
-            <h1 className="mt-1 text-3xl font-semibold">{constructor} Dashboard</h1>
+    <DashboardShell
+      title={`${teamName} Dashboard`}
+      subtitle={`${seasonYear} preseason · Idle`}
+      sidebar={<DashboardSidebar activeLabel="Dashboard" />}
+    >
+      <div className="grid gap-3 xl:grid-cols-[290px_1fr_340px]">
+        <StandingsTable standings={standings} highlightedTeam={teamName} />
+
+        <div className="space-y-3">
+          <RecordPanel raceRecord="0-0" championshipPos="14th in championship" />
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <LinkList
+              title="Team Leaders"
+              rows={[
+                { label: `${leaderOne}  |  best finish`, value: "P6" },
+                { label: `${leaderTwo}  |  avg quali`, value: "P11" },
+                { label: `${leaderOne}  |  overtakes`, value: "9" },
+              ]}
+              footerLink="Full roster"
+            />
+
+            <LinkList
+              title="Team Stats"
+              rows={[
+                { label: "Points", value: "0.0 (3rd target)" },
+                { label: "Allowed incidents", value: "0.0 (safety target)" },
+                { label: "Avg pit stop", value: "2.49s" },
+                { label: "Chassis", value: chassisName },
+              ]}
+              footerLink="Team stats"
+            />
           </div>
-          <Link
-            href="/team-setup"
-            className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
-          >
-            Switch Team
-          </Link>
-        </header>
 
-        <section className="grid gap-5 lg:grid-cols-[1.2fr_1fr_1.2fr]">
-          <article className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-            <h2 className="text-lg font-semibold">Constructors Standings</h2>
-            <table className="mt-3 w-full text-sm">
-              <thead className="text-zinc-500">
-                <tr>
-                  <th className="text-left font-medium">Pos</th>
-                  <th className="text-left font-medium">Team</th>
-                  <th className="text-right font-medium">Pts</th>
-                </tr>
-              </thead>
-              <tbody>
-                {standings.map((standing) => (
-                  <tr
-                    key={standing.team}
-                    className={`border-t border-zinc-800 ${
-                      standing.team === constructor ? "bg-cyan-900/30" : ""
-                    }`}
-                  >
-                    <td className="py-1.5">{standing.position}</td>
-                    <td className="py-1.5">{standing.team}</td>
-                    <td className="py-1.5 text-right">{standing.points}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
+          <LinkList
+            title="Finances"
+            rows={[
+              { label: "Budget (YTD)", value: "$160.0M" },
+              { label: "Revenue (YTD)", value: "$0" },
+              { label: "Profit (YTD)", value: "$0" },
+              { label: "Cash", value: "$10M" },
+              { label: "Payroll", value: "$21.2M" },
+            ]}
+            footerLink="Team finances"
+          />
+        </div>
 
-          <article className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Wins-Podiums</p>
-              <p className="text-5xl font-semibold">{winsPodiumsRecord}</p>
-              <p className="text-2xl text-zinc-300">{formatOrdinal(selectedStanding.position)} in standings</p>
-            </div>
-
-            <div className="space-y-1 border-t border-zinc-800 pt-3 text-left text-sm">
-              <h3 className="text-lg font-semibold">Team Snapshot</h3>
-              <p>
-                <span className="text-zinc-500">Entrant:</span> {entrant}
-              </p>
-              <p>
-                <span className="text-zinc-500">Chassis:</span> {chassis}
-              </p>
-              <p>
-                <span className="text-zinc-500">Power Unit:</span> {powerUnit}
-              </p>
-              <p>
-                <span className="text-zinc-500">Record:</span> {raceRecord}
-              </p>
-            </div>
-
-            <div className="space-y-1 border-t border-zinc-800 pt-3 text-left text-sm">
-              <h3 className="text-lg font-semibold">Driver Lineup</h3>
-              {drivers.length > 0 ? (
-                <ul className="space-y-1">
-                  {drivers.map((driver) => (
-                    <li key={driver}>{driver}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-zinc-400">No drivers set yet.</p>
-              )}
-            </div>
-          </article>
-
-          <article className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-            <h2 className="text-lg font-semibold">League Headlines</h2>
-            <div className="mt-3 space-y-2 rounded-md border border-zinc-700 bg-zinc-900 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-medium text-cyan-300">{constructor}</p>
-                <span className="rounded border border-zinc-600 px-2 py-0.5 text-xs text-zinc-300">
-                  New Save
-                </span>
-              </div>
-              <p className="text-sm text-zinc-300">
-                Welcome to your new garage. Make your staffing and development calls to prepare for race one.
-              </p>
-            </div>
-            <div className="mt-4 space-y-1 text-sm text-zinc-400">
-              <p>› Car development update due in 5 days</p>
-              <p>› Sponsor objective: Score points in first 3 races</p>
-              <p>› Regulations vote scheduled this month</p>
-            </div>
-          </article>
-        </section>
+        <div className="space-y-3">
+          <Headlines teamName={teamName} />
+          <LinkList
+            title="Inbox"
+            rows={[
+              { label: "No urgent messages" },
+              { label: "Simulator prep due before Round 1" },
+              { label: "Board review scheduled for next week" },
+            ]}
+          />
+        </div>
       </div>
-    </main>
+
+      <div className="mt-3">
+        <DriverLineupTable drivers={drivers} />
+      </div>
+    </DashboardShell>
   );
 }

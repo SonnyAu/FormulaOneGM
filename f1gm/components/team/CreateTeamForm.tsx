@@ -1,16 +1,10 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { ChassisNamingPattern } from "@/types/f1";
+import { formatCustomChassis } from "@/lib/teamSelection";
+import { ChassisNamingPattern, type CustomTeam } from "@/types/f1";
 
-type CustomTeamDraft = {
-  constructorName: string;
-  teamBase: string;
-  chassisPrefix: string;
-  chassisNamingPattern: ChassisNamingPattern;
-  driverOne: string;
-  driverTwo: string;
-};
+type CustomTeamDraft = CustomTeam;
 
 type CreateTeamFormProps = {
   seasonYear?: number;
@@ -29,19 +23,6 @@ const randomDriverNames = [
   "Kai Romero",
 ];
 
-function buildChassisCode(prefix: string, pattern: ChassisNamingPattern, year: number) {
-  const cleanPrefix = prefix.trim().toUpperCase().slice(0, 3);
-  if (!cleanPrefix) {
-    return "—";
-  }
-
-  if (pattern === "year-based") {
-    return `${cleanPrefix}-${year.toString().slice(-2)}`;
-  }
-
-  return `${cleanPrefix} 01`;
-}
-
 function getRandomItem(list: string[]) {
   return list[Math.floor(Math.random() * list.length)];
 }
@@ -57,7 +38,7 @@ export function CreateTeamForm({ seasonYear = 2026, onCreateTeam }: CreateTeamFo
   const [message, setMessage] = useState<string | null>(null);
 
   const chassisPreview = useMemo(
-    () => buildChassisCode(chassisPrefix, chassisNamingPattern, seasonYear),
+    () => formatCustomChassis(chassisPrefix, chassisNamingPattern, seasonYear),
     [chassisNamingPattern, chassisPrefix, seasonYear],
   );
 
