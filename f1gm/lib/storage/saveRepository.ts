@@ -70,9 +70,55 @@ function buildMetadata(save: SaveData): SaveMetadata {
   };
 }
 
+function sortKeyForMetadata(meta: Partial<SaveMetadata>): string {
+  return meta.lastPlayedAt ?? meta.updatedAt ?? meta.createdAt ?? "";
+}
+
+function coerceIsoTimestamp(value: string | undefined, fallback: string): string {
+  if (typeof value !== "string" || value.length === 0) return fallback;
+  const t = Date.parse(value);
+  if (Number.isNaN(t)) return fallback;
+  return new Date(t).toISOString();
+}
+
+/** IndexedDB may contain older or partial metadata rows; coerce before sort/UI. */
+function normalizeListedMetadata(raw: unknown): SaveMetadata | null {
+  if (!isObjectLike(raw) || typeof raw.id !== "string") return null;
+
+  const row = raw as Partial<SaveMetadata>;
+  const now = new Date().toISOString();
+  const createdAt = coerceIsoTimestamp(typeof row.createdAt === "string" ? row.createdAt : undefined, now);
+  const updatedAt = coerceIsoTimestamp(typeof row.updatedAt === "string" ? row.updatedAt : undefined, createdAt);
+  const lastPlayedAt = coerceIsoTimestamp(sortKeyForMetadata(row) || undefined, updatedAt);
+
+  const difficulty =
+    row.difficulty === "easy" || row.difficulty === "hard" || row.difficulty === "standard"
+      ? row.difficulty
+      : "standard";
+
+  return {
+    id: row.id,
+    name: typeof row.name === "string" ? row.name : "Save",
+    createdAt,
+    updatedAt,
+    lastPlayedAt,
+    version: typeof row.version === "number" ? row.version : SAVE_SCHEMA_VERSION,
+    playerTeamId: typeof row.playerTeamId === "string" ? row.playerTeamId : "",
+    playerTeamName: typeof row.playerTeamName === "string" ? row.playerTeamName : "—",
+    seasonYear: typeof row.seasonYear === "number" ? row.seasonYear : 2026,
+    week: typeof row.week === "number" ? row.week : 1,
+    difficulty,
+    summary: {
+      points: typeof row.summary?.points === "number" ? row.summary.points : 0,
+      budget: typeof row.summary?.budget === "number" ? row.summary.budget : 0,
+    },
+  };
+}
+
 export async function listSaveMetadata(): Promise<SaveMetadata[]> {
-  const records = await idbGetAll<SaveMetadata>("metadata");
-  return records.sort((a, b) => b.lastPlayedAt.localeCompare(a.lastPlayedAt));
+  const records = await idbGetAll<unknown>("metadata");
+  const normalized = records.map(normalizeListedMetadata).filter((m): m is SaveMetadata => m !== null);
+  return normalized.sort((a, b) => b.lastPlayedAt.localeCompare(a.lastPlayedAt));
 }
 
 export async function writeSave(save: SaveData): Promise<SaveData> {

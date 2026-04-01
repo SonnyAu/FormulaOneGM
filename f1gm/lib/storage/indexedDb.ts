@@ -50,8 +50,9 @@ async function runTransaction<T>(
     const objectStore = tx.objectStore(store);
     const request = operation(objectStore);
 
-    request.onsuccess = () => resolve(request.result as T);
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB operation failed."));
+    tx.onerror = () => reject(request.error ?? tx.error ?? new Error("IndexedDB transaction failed."));
+    tx.onabort = () => reject(request.error ?? tx.error ?? new Error("IndexedDB transaction aborted."));
+    tx.oncomplete = () => resolve(request.result as T);
   });
 }
 

@@ -1,19 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { ChangeEvent, useCallback, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { simulationSession } from "@/lib/sim/session";
 import { SaveMetadata } from "@/types/sim";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
 
+function formatSaveTimestamp(value: string | undefined): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return dateFormatter.format(d);
+}
+
 export default function Home() {
   const router = useRouter();
+  const pathname = usePathname();
   const [saves, setSaves] = useState<SaveMetadata[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
-  const loadSaves = async () => {
+  const loadSaves = useCallback(async () => {
     const result = await simulationSession.getSaves();
     if (!result.ok) {
       setMessage(result.error);
@@ -22,11 +30,19 @@ export default function Home() {
 
     setSaves(result.data);
     setMessage(null);
-  };
+  }, []);
 
   useEffect(() => {
+    if (pathname !== "/") return;
     void loadSaves();
-  }, []);
+  }, [pathname, loadSaves]);
+
+  useEffect(() => {
+    if (pathname !== "/") return;
+    const onFocus = () => void loadSaves();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [pathname, loadSaves]);
 
   const onResume = async (saveId: string) => {
     const result = await simulationSession.loadSave(saveId);
@@ -125,8 +141,8 @@ export default function Home() {
                       <td className="p-2">{save.seasonYear}</td>
                       <td className="p-2">{save.week}</td>
                       <td className="p-2 capitalize">{save.difficulty}</td>
-                      <td className="p-2">{dateFormatter.format(new Date(save.createdAt))}</td>
-                      <td className="p-2">{dateFormatter.format(new Date(save.lastPlayedAt))}</td>
+                      <td className="p-2">{formatSaveTimestamp(save.createdAt)}</td>
+                      <td className="p-2">{formatSaveTimestamp(save.lastPlayedAt)}</td>
                       <td className="p-2">
                         <div className="flex flex-wrap gap-1">
                           <button type="button" onClick={() => onResume(save.id)} className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-500">Resume</button>

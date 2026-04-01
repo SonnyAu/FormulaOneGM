@@ -8,7 +8,8 @@ const AUTOSAVE_DELAY_MS = 600;
 
 class SimulationSessionService {
   private activeSave: SaveData | null = null;
-  private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Browser timeout id from `window.setTimeout` (typed loosely for DOM vs Node timer typings). */
+  private autosaveTimer: number | null = null;
 
   private async persistActiveSave(): Promise<GameActionResult<SaveMetadata>> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
@@ -22,11 +23,22 @@ class SimulationSessionService {
 
   private queueAutosave() {
     if (!this.activeSave || typeof window === "undefined") return;
-    if (this.autosaveTimer) window.clearTimeout(this.autosaveTimer);
+    if (this.autosaveTimer !== null) window.clearTimeout(this.autosaveTimer);
     this.autosaveTimer = window.setTimeout(() => {
       void this.persistActiveSave();
       this.autosaveTimer = null;
-    }, AUTOSAVE_DELAY_MS);
+    }, AUTOSAVE_DELAY_MS) as unknown as number;
+  }
+
+  /** Flush debounced autosave immediately (e.g. tab backgrounded). */
+  async flushPendingWrites(): Promise<void> {
+    if (typeof window === "undefined") return;
+    if (this.autosaveTimer !== null) {
+      window.clearTimeout(this.autosaveTimer);
+      this.autosaveTimer = null;
+    }
+    if (!this.activeSave) return;
+    await this.persistActiveSave();
   }
 
   async initializeSave(input: CreateSaveInput): Promise<GameActionResult<SaveMetadata>> {
@@ -126,3 +138,11 @@ class SimulationSessionService {
 }
 
 export const simulationSession = new SimulationSessionService();
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      void simulationSession.flushPendingWrites();
+    }
+  });
+}

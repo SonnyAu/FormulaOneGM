@@ -8,10 +8,11 @@ export function processDevelopment(team: TeamState, decision: TeamDecision, week
   const queue = [...team.rd.queue];
 
   if (decision.rdSpend > 600_000) {
+    const rdArea: TeamUpgradeProject["area"] = decision.focus === "balanced" ? "aero" : decision.focus;
     queue.push({
-      id: nextProjectId(team.id, week, decision.focus),
+      id: nextProjectId(team.id, week, rdArea),
       teamId: team.id,
-      area: decision.focus,
+      area: rdArea,
       startedWeek: week,
       targetWeek: week + 2,
       progress: 0,

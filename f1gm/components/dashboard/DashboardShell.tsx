@@ -33,6 +33,9 @@ export function DashboardShell({ title, subtitle, sidebar, children }: Dashboard
             <button type="button" className="hover:text-white">Drivers ▾</button>
             <button type="button" className="hover:text-white">Stats ▾</button>
             <button type="button" className="hover:text-white">Tools ▾</button>
+            <Link href="/" className="hover:text-white">
+              Career Saves
+            </Link>
             <Link href="/team-setup" className="hover:text-white">New Career</Link>
           </nav>
         </div>

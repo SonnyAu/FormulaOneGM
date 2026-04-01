@@ -15,8 +15,6 @@ import { DashboardSummary } from "@/types/sim";
 const seasonYear = 2026;
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-
 function DashboardPageContent() {
   const searchParams = useSearchParams();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -115,30 +113,6 @@ function DashboardPageContent() {
   };
 
   const onSubmitDefaultDecision = () => {
-    const result = simulationSession.submitPlayerDecision({
-      teamId: summary.playerTeam.id,
-      rdSpend: 1_050_000,
-      reliabilitySpend: 420_000,
-      facilitySpend: 360_000,
-      staffSpend: 300_000,
-      sponsorRisk: "balanced",
-      focus: "aero",
-      notes: "Default development allocation",
-    });
-
-    if (!result.ok) setSessionError(result.error);
-  };
-
-  const onAdvanceWeek = async () => {
-    const result = await simulationSession.advanceWeek();
-    if (!result.ok) {
-      setSessionError(result.error);
-      return;
-    }
-    setSummary(result.data);
-  };
-
-  const onSubmitDefaultDecision = () => {
     if (!summary) return;
     const result = simulationSession.submitPlayerDecision({
       teamId: summary.playerTeam.id,
@@ -160,11 +134,14 @@ function DashboardPageContent() {
       subtitle={`${seasonYear} · Week ${summary.meta.week} · ${summary.upcomingEvent?.name ?? "Preseason"}`}
       sidebar={<DashboardSidebar activeLabel="Dashboard" />}
     >
-      <div className="mb-3 flex flex-wrap gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <button type="button" onClick={onSubmitDefaultDecision} className="rounded bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-100 hover:bg-zinc-700">Submit default weekly decision</button>
         <button type="button" onClick={onAdvanceWeek} className="rounded bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-500">Advance week</button>
         <Link href="/" className="rounded border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 hover:border-zinc-500">Back to saves</Link>
         {sessionError && <p className="text-sm text-red-300">{sessionError}</p>}
+        <p className="w-full text-xs text-zinc-500">
+          Auto-save: weekly decisions are written to this device after a short delay; advancing the week saves immediately. Switching tabs flushes any pending save.
+        </p>
       </div>
       <div className="grid gap-3 xl:grid-cols-[290px_1fr_340px]">
         <StandingsTable constructorStandings={constructorStandings} driverStandings={driverStandings} highlightedTeam={summary.playerTeam.abbreviation} />
