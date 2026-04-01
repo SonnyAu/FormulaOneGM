@@ -34,3 +34,20 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Local-first simulation architecture
+
+- Save data is persisted client-side in IndexedDB (`lib/storage/indexedDb.ts` + `lib/storage/saveRepository.ts`).
+- Active save state is loaded into memory through `simulationSession` (`lib/sim/session.ts`) and used for all simulation work.
+- Weekly progression runs through `runSimulationTick` (`lib/sim/engine.ts`), then checkpoints back to IndexedDB.
+- Simulation subsystems are split by responsibility under `lib/sim/subsystems/*` (AI, decision validation, economy, development, race).
+- UI consumes typed service actions instead of mutating core state directly.
+
+
+## Local-first saves flow
+
+- App startup lands on the saves screen (`app/page.tsx`) to create/import/resume/delete local saves.
+- New save creation runs through `app/team-setup/page.tsx`, where save name + difficulty + player team are selected before entering the dashboard.
+- Save metadata is stored separately from full save payload in IndexedDB via `lib/storage/saveRepository.ts`.
+- The simulation session service (`lib/sim/session.ts`) owns the active in-memory save and performs autosave/checkpoint writes after meaningful actions.
+- Dashboard route (`app/dashboard/page.tsx`) loads the selected `saveId`, runs simulation actions, and can return to saves at any time.
