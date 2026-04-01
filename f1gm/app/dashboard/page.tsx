@@ -15,6 +15,8 @@ import { DashboardSummary } from "@/types/sim";
 const seasonYear = 2026;
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
+const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
 function DashboardPageContent() {
   const searchParams = useSearchParams();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -113,6 +115,31 @@ function DashboardPageContent() {
   };
 
   const onSubmitDefaultDecision = () => {
+    const result = simulationSession.submitPlayerDecision({
+      teamId: summary.playerTeam.id,
+      rdSpend: 1_050_000,
+      reliabilitySpend: 420_000,
+      facilitySpend: 360_000,
+      staffSpend: 300_000,
+      sponsorRisk: "balanced",
+      focus: "aero",
+      notes: "Default development allocation",
+    });
+
+    if (!result.ok) setSessionError(result.error);
+  };
+
+  const onAdvanceWeek = async () => {
+    const result = await simulationSession.advanceWeek();
+    if (!result.ok) {
+      setSessionError(result.error);
+      return;
+    }
+    setSummary(result.data);
+  };
+
+  const onSubmitDefaultDecision = () => {
+    if (!summary) return;
     const result = simulationSession.submitPlayerDecision({
       teamId: summary.playerTeam.id,
       rdSpend: 1_050_000,
