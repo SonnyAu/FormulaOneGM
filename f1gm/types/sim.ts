@@ -1,14 +1,23 @@
 export const SAVE_SCHEMA_VERSION = 1;
 
+export type SaveDifficulty = "easy" | "standard" | "hard";
+
 export type SaveMetadata = {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
+  lastPlayedAt: string;
   version: number;
   playerTeamId: string;
+  playerTeamName: string;
   seasonYear: number;
   week: number;
+  difficulty: SaveDifficulty;
+  summary: {
+    points: number;
+    budget: number;
+  };
 };
 
 export type CalendarEventType = "week" | "race";
@@ -182,10 +191,18 @@ export type DashboardSummary = {
   recentEvents: EventLogEntry[];
 };
 
-export type GameActionResult<T> = {
-  ok: true;
-  data: T;
-} | {
-  ok: false;
-  error: string;
+export type CreateSaveInput = {
+  selection: import("@/types/f1").TeamSelection;
+  name: string;
+  difficulty: SaveDifficulty;
 };
+
+export type GameActionResult<T> =
+  | {
+      ok: true;
+      data: T;
+    }
+  | {
+      ok: false;
+      error: string;
+    };

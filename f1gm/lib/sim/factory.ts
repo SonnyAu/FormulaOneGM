@@ -2,6 +2,7 @@ import { teams } from "@/data/teams";
 import { TeamSelection } from "@/types/f1";
 import {
   CalendarEvent,
+  CreateSaveInput,
   HistoricalArchiveRecord,
   SaveData,
   SaveMetadata,
@@ -74,7 +75,16 @@ function createBaselineTeam(teamId: string, name: string, abbreviation: string, 
   };
 }
 
-export function createNewSave(selection: TeamSelection, seasonYear = 2026): SaveData {
+function resolvePlayerTeamName(selection: TeamSelection): string {
+  if (selection.mode === "custom") {
+    return selection.team.constructorName;
+  }
+
+  return teams.find((team) => team.id === selection.teamId)?.entrant ?? "Unknown Team";
+}
+
+export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveData {
+  const { selection, difficulty, name } = input;
   const calendar = createCalendar(seasonYear);
   const now = new Date().toISOString();
   const id = `${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
@@ -88,7 +98,7 @@ export function createNewSave(selection: TeamSelection, seasonYear = 2026): Save
     ),
   );
 
-  let playerTeamId = selection.mode === "existing" ? selection.teamId : "custom-player-team";
+  const playerTeamId = selection.mode === "existing" ? selection.teamId : "custom-player-team";
 
   if (selection.mode === "custom") {
     const customTeam = createBaselineTeam(
@@ -107,13 +117,20 @@ export function createNewSave(selection: TeamSelection, seasonYear = 2026): Save
 
   const meta: SaveMetadata = {
     id,
-    name: `${seasonYear} Career Save`,
+    name: name.trim() || `${seasonYear} Career Save`,
     createdAt: now,
     updatedAt: now,
+    lastPlayedAt: now,
     version: 1,
     playerTeamId,
+    playerTeamName: resolvePlayerTeamName(selection),
     seasonYear,
     week: 1,
+    difficulty,
+    summary: {
+      points: 0,
+      budget: teamsById[playerTeamId]?.budget ?? 0,
+    },
   };
 
   const season: SeasonState = {

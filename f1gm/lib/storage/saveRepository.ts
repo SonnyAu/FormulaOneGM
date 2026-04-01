@@ -23,7 +23,10 @@ function validateSaveData(candidate: unknown): candidate is SaveData {
     typeof meta.id === "string" &&
     typeof meta.name === "string" &&
     typeof meta.playerTeamId === "string" &&
+    typeof meta.playerTeamName === "string" &&
     typeof meta.seasonYear === "number" &&
+    typeof meta.week === "number" &&
+    typeof meta.createdAt === "string" &&
     typeof season.currentWeek === "number" &&
     typeof season.currentRound === "number" &&
     isObjectLike(season.teams)
@@ -31,31 +34,51 @@ function validateSaveData(candidate: unknown): candidate is SaveData {
 }
 
 function migrateSaveData(record: SaveRecord): SaveData | null {
-  if (record.version > SAVE_SCHEMA_VERSION) {
+  if (record.version > SAVE_SCHEMA_VERSION || !validateSaveData(record.payload)) {
     return null;
   }
 
-  if (record.version === SAVE_SCHEMA_VERSION && validateSaveData(record.payload)) {
-    return record.payload;
+  const save = record.payload;
+  const now = new Date().toISOString();
+
+  if (!save.meta.lastPlayedAt) save.meta.lastPlayedAt = now;
+  if (!save.meta.difficulty) save.meta.difficulty = "standard";
+  if (!save.meta.summary) {
+    const player = save.season.teams[save.meta.playerTeamId];
+    save.meta.summary = {
+      points: player?.standings.points ?? 0,
+      budget: player?.budget ?? 0,
+    };
   }
 
-  return null;
+  return save;
+}
+
+function buildMetadata(save: SaveData): SaveMetadata {
+  const player = save.season.teams[save.meta.playerTeamId];
+  return {
+    ...save.meta,
+    version: SAVE_SCHEMA_VERSION,
+    updatedAt: new Date().toISOString(),
+    lastPlayedAt: new Date().toISOString(),
+    seasonYear: save.season.seasonYear,
+    week: save.season.currentWeek,
+    summary: {
+      points: player?.standings.points ?? save.meta.summary.points ?? 0,
+      budget: player?.budget ?? save.meta.summary.budget ?? 0,
+    },
+  };
 }
 
 export async function listSaveMetadata(): Promise<SaveMetadata[]> {
   const records = await idbGetAll<SaveMetadata>("metadata");
-  return records.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return records.sort((a, b) => b.lastPlayedAt.localeCompare(a.lastPlayedAt));
 }
 
-export async function writeSave(save: SaveData): Promise<void> {
-  const now = new Date().toISOString();
+export async function writeSave(save: SaveData): Promise<SaveData> {
   const normalized: SaveData = {
     ...save,
-    meta: {
-      ...save.meta,
-      version: SAVE_SCHEMA_VERSION,
-      updatedAt: now,
-    },
+    meta: buildMetadata(save),
   };
 
   await idbPut("saves", {
@@ -64,6 +87,17 @@ export async function writeSave(save: SaveData): Promise<void> {
     payload: normalized,
   } satisfies SaveRecord);
   await idbPut("metadata", normalized.meta);
+
+  return normalized;
+}
+
+export async function upsertImportedSave(save: SaveData): Promise<SaveData> {
+  const migrated = migrateSaveData({ id: save.meta.id, version: save.meta.version, payload: save });
+  if (!migrated) {
+    throw new Error("Imported save file is invalid or unsupported.");
+  }
+
+  return writeSave(migrated);
 }
 
 export async function readSave(saveId: string): Promise<SaveData | null> {

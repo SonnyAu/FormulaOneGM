@@ -43,3 +43,11 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 - Simulation subsystems are split by responsibility under `lib/sim/subsystems/*` (AI, decision validation, economy, development, race).
 - UI consumes typed service actions instead of mutating core state directly.
 
+
+## Local-first saves flow
+
+- App startup lands on the saves screen (`app/page.tsx`) to create/import/resume/delete local saves.
+- New save creation runs through `app/team-setup/page.tsx`, where save name + difficulty + player team are selected before entering the dashboard.
+- Save metadata is stored separately from full save payload in IndexedDB via `lib/storage/saveRepository.ts`.
+- The simulation session service (`lib/sim/session.ts`) owns the active in-memory save and performs autosave/checkpoint writes after meaningful actions.
+- Dashboard route (`app/dashboard/page.tsx`) loads the selected `saveId`, runs simulation actions, and can return to saves at any time.
