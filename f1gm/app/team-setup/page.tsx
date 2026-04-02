@@ -58,10 +58,11 @@ export default function TeamSetupPage() {
         difficulty,
       });
 
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
+    if (!result.ok) {
+      setError(result.error);
+      setIsStarting(false);
+      return;
+    }
 
       router.push(`/dashboard?saveId=${result.data.id}`);
     } finally {

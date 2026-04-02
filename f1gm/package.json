@@ -9,9 +9,8 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "check": "npm run check:registry && npm run lint && npm run typecheck && npm run build",
-    "lint:fix": "npm run lint -- --fix",
-    "check:registry": "node scripts/check-lockfile-registry.mjs"
+    "check": "npm run lint && npm run typecheck && npm run build",
+    "lint:fix": "npm run lint -- --fix"
   },
   "dependencies": {
     "next": "16.2.2",

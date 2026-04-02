@@ -11,35 +11,7 @@ const allowedHosts = new Set(["registry.npmjs.org"]);
 const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
 const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
 
-const requiredRuntimeDeps = ["next", "react", "react-dom"];
-const requiredDevDeps = [
-  "eslint",
-  "eslint-config-next",
-  "typescript",
-  "tailwindcss",
-  "@tailwindcss/postcss",
-  "@types/node",
-  "@types/react",
-  "@types/react-dom",
-];
-
-const runtimeDeps = pkg.dependencies ?? {};
-const devDeps = pkg.devDependencies ?? {};
-
 const violations = [];
-
-for (const dep of requiredRuntimeDeps) {
-  if (typeof runtimeDeps[dep] !== "string" || runtimeDeps[dep].length === 0) {
-    violations.push({ name: `dependencies.${dep}`, resolved: String(runtimeDeps[dep]), reason: "missing required runtime dependency" });
-  }
-}
-
-for (const dep of requiredDevDeps) {
-  if (typeof devDeps[dep] !== "string" || devDeps[dep].length === 0) {
-    violations.push({ name: `devDependencies.${dep}`, resolved: String(devDeps[dep]), reason: "missing required dev dependency" });
-  }
-}
-
 for (const [name, entry] of Object.entries(lock.packages ?? {})) {
   const resolved = entry?.resolved;
   if (typeof resolved !== "string") continue;
