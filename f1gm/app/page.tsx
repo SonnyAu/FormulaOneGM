@@ -82,16 +82,19 @@ export default function Home() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const serialized = await file.text();
-    const result = await simulationSession.importSave(serialized);
-    if (!result.ok) {
-      setMessage(result.error);
-      return;
-    }
+    try {
+      const serialized = await file.text();
+      const result = await simulationSession.importSave(serialized);
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
 
-    setMessage(`Imported save: ${result.data.name}`);
-    await loadSaves();
-    event.target.value = "";
+      setMessage(`Imported save: ${result.data.name}`);
+      await loadSaves();
+    } finally {
+      event.target.value = "";
+    }
   };
 
   return (

@@ -24,6 +24,9 @@ function DashboardPageContent() {
   useEffect(() => {
     if (!saveId) return;
 
+    setSummary(null);
+    setSessionError(null);
+
     const bootstrap = async () => {
       const loadResult = await simulationSession.loadSave(saveId);
       if (!loadResult.ok) {
