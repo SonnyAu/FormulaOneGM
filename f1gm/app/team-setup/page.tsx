@@ -22,6 +22,7 @@ export default function TeamSetupPage() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(teams[0]?.id ?? null);
   const [customTeam, setCustomTeam] = useState<CustomTeamDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
@@ -29,7 +30,15 @@ export default function TeamSetupPage() {
   );
 
   const startSave = async () => {
+    if (isStarting) return;
+
     setError(null);
+    if (!saveName.trim()) {
+      setError("Save name is required.");
+      return;
+    }
+
+    setIsStarting(true);
     const selection = mode === "select" && selectedTeamId
       ? { mode: "existing" as const, teamId: selectedTeamId }
       : customTeam
@@ -38,6 +47,7 @@ export default function TeamSetupPage() {
 
     if (!selection) {
       setError("Select or create a team before starting your save.");
+      setIsStarting(false);
       return;
     }
 
@@ -49,6 +59,7 @@ export default function TeamSetupPage() {
 
     if (!result.ok) {
       setError(result.error);
+      setIsStarting(false);
       return;
     }
 
@@ -124,7 +135,7 @@ export default function TeamSetupPage() {
         )}
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
-          <button type="button" onClick={startSave} className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500">Create Save & Enter Career</button>
+          <button type="button" onClick={startSave} disabled={isStarting} className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-70">{isStarting ? "Creating save..." : "Create Save & Enter Career"}</button>
           {error ? <p className="mt-2 text-sm text-red-300">{error}</p> : null}
         </div>
       </div>
