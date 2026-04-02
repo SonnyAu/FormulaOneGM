@@ -51,11 +51,12 @@ export default function TeamSetupPage() {
       return;
     }
 
-    const result = await simulationSession.initializeSave({
-      selection,
-      name: saveName,
-      difficulty,
-    });
+    try {
+      const result = await simulationSession.initializeSave({
+        selection,
+        name: saveName,
+        difficulty,
+      });
 
     if (!result.ok) {
       setError(result.error);
@@ -63,7 +64,10 @@ export default function TeamSetupPage() {
       return;
     }
 
-    router.push(`/dashboard?saveId=${result.data.id}`);
+      router.push(`/dashboard?saveId=${result.data.id}`);
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   return (
