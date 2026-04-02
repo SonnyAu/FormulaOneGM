@@ -19,7 +19,6 @@ npm run typecheck
 npm run build
 # or all at once
 npm run check
-npm run check:registry
 ```
 
 ## Notes for dependency install reliability
