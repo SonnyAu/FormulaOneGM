@@ -12,7 +12,6 @@ import { teams } from "@/data/teams";
 import { simulationSession } from "@/lib/sim/session";
 import { DashboardSummary } from "@/types/sim";
 
-const seasonYear = 2026;
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 function DashboardPageContent() {
@@ -24,6 +23,9 @@ function DashboardPageContent() {
 
   useEffect(() => {
     if (!saveId) return;
+
+    setSummary(null);
+    setSessionError(null);
 
     const bootstrap = async () => {
       const loadResult = await simulationSession.loadSave(saveId);
@@ -131,7 +133,7 @@ function DashboardPageContent() {
   return (
     <DashboardShell
       title={`${summary.playerTeam.name} Dashboard`}
-      subtitle={`${seasonYear} · Week ${summary.meta.week} · ${summary.upcomingEvent?.name ?? "Preseason"}`}
+      subtitle={`${summary.meta.seasonYear} · Week ${summary.meta.week} · ${summary.upcomingEvent?.name ?? "Preseason"}`}
       sidebar={<DashboardSidebar activeLabel="Dashboard" />}
     >
       <div className="mb-3 flex flex-wrap items-center gap-2">
