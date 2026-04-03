@@ -85,6 +85,7 @@ function coerceIsoTimestamp(value: string | undefined, fallback: string): string
 function normalizeListedMetadata(raw: unknown): SaveMetadata | null {
   if (!isObjectLike(raw) || typeof raw.id !== "string") return null;
 
+  const id = raw.id;
   const row = raw as Partial<SaveMetadata>;
   const now = new Date().toISOString();
   const createdAt = coerceIsoTimestamp(typeof row.createdAt === "string" ? row.createdAt : undefined, now);
@@ -97,7 +98,7 @@ function normalizeListedMetadata(raw: unknown): SaveMetadata | null {
       : "standard";
 
   return {
-    id: row.id,
+    id,
     name: typeof row.name === "string" ? row.name : "Save",
     createdAt,
     updatedAt,

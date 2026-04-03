@@ -34,7 +34,7 @@ function createCalendar(seasonYear: number): CalendarEvent[] {
   });
 
   calendar.push({ week, round: races.length, name: "Development Break", type: "week" });
-  calendar.push({ week: week + 1, round: races.length, name: "Season Review", type: "week" });
+  calendar.push({ week: week + 1, round: races.length, name: `${seasonYear} Season Review`, type: "week" });
   return calendar;
 }
 

@@ -14,18 +14,16 @@ import { DashboardSummary } from "@/types/sim";
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-function DashboardPageContent() {
-  const searchParams = useSearchParams();
+type DashboardPageContentProps = {
+  saveId: string | null;
+};
+
+function DashboardPageContent({ saveId }: DashboardPageContentProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  const saveId = searchParams.get("saveId");
-
   useEffect(() => {
     if (!saveId) return;
-
-    setSummary(null);
-    setSessionError(null);
 
     const bootstrap = async () => {
       const loadResult = await simulationSession.loadSave(saveId);
@@ -49,7 +47,7 @@ function DashboardPageContent() {
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === summary?.playerTeam.id) ?? null,
-    [summary?.playerTeam.id],
+    [summary?.playerTeam],
   );
 
   const drivers = useMemo(() => {
@@ -167,10 +165,16 @@ function DashboardPageContent() {
   );
 }
 
+function DashboardWithSaveId() {
+  const searchParams = useSearchParams();
+  const saveId = searchParams.get("saveId");
+  return <DashboardPageContent key={saveId ?? ""} saveId={saveId} />;
+}
+
 export default function DashboardPage() {
   return (
     <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-400">Loading dashboard…</main>}>
-      <DashboardPageContent />
+      <DashboardWithSaveId />
     </Suspense>
   );
 }
