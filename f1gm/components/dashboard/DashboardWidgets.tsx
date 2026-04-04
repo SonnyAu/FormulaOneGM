@@ -5,9 +5,9 @@ type RecordPanelProps = {
 
 export function RecordPanel({ raceRecord, championshipPos }: RecordPanelProps) {
   return (
-    <section className="rounded border border-zinc-700 bg-[#1b232e] p-4 text-center">
-      <p className="text-6xl leading-none text-zinc-100">{raceRecord}</p>
-      <p className="mt-2 text-3xl text-zinc-300">{championshipPos}</p>
+    <section className="ui-card rounded border border-zinc-700 bg-[#1b232e] p-5 text-center">
+      <p className="text-6xl font-semibold leading-none text-zinc-100">{raceRecord}</p>
+      <p className="mt-2 text-3xl leading-tight text-zinc-300">{championshipPos}</p>
     </section>
   );
 }
@@ -20,9 +20,9 @@ type LinkListProps = {
 
 export function LinkList({ title, rows, footerLink }: LinkListProps) {
   return (
-    <section className="rounded border border-zinc-700 bg-[#1b232e] p-3">
+    <section className="ui-card rounded border border-zinc-700 bg-[#1b232e] p-4">
       <h3 className="text-4xl font-semibold leading-none">{title}</h3>
-      <ul className="mt-2 space-y-1 text-sm text-zinc-300">
+      <ul className="mt-3 space-y-1.5 text-sm text-zinc-300">
         {rows.map((row) => (
           <li key={row.label} className="flex items-start justify-between gap-3">
             <span>{row.label}</span>
@@ -30,7 +30,7 @@ export function LinkList({ title, rows, footerLink }: LinkListProps) {
           </li>
         ))}
       </ul>
-      {footerLink ? <p className="mt-1 text-xs text-amber-400">» {footerLink}</p> : null}
+      {footerLink ? <p className="mt-2 text-xs text-amber-400">» {footerLink}</p> : null}
     </section>
   );
 }
@@ -41,7 +41,7 @@ type HeadlinesProps = {
 
 export function Headlines({ teamName }: HeadlinesProps) {
   return (
-    <section className="rounded border border-zinc-700 bg-[#1b232e] p-3">
+    <section className="ui-card rounded border border-zinc-700 bg-[#1b232e] p-4">
       <h3 className="text-4xl font-semibold leading-none">League Headlines</h3>
       <div className="mt-3 overflow-hidden rounded border border-cyan-700/40">
         <p className="bg-cyan-900/40 px-3 py-1 text-sm text-cyan-200">{teamName}</p>

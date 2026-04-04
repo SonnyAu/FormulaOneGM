@@ -3,6 +3,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --ui-radius: 0.5rem;
+  --ui-transition-fast: 140ms;
+  --ui-ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
+  --ui-ease-sharp: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @theme inline {
@@ -23,6 +27,100 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.015em;
+}
+
+a,
+button,
+input,
+select {
+  transition-duration: var(--ui-transition-fast);
+  transition-timing-function: var(--ui-ease-snappy);
+}
+
+.ui-interactive {
+  transition-property: transform, opacity, filter, background-color, border-color, box-shadow, color;
+  will-change: transform;
+}
+
+.ui-interactive:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.015);
+  filter: brightness(1.04);
+}
+
+.ui-interactive:active:not(:disabled) {
+  transform: scale(0.98);
+  transition-duration: 90ms;
+}
+
+.ui-card {
+  border-radius: var(--ui-radius);
+  transition: transform 160ms var(--ui-ease-snappy), filter 160ms var(--ui-ease-snappy), border-color 160ms var(--ui-ease-snappy);
+}
+
+.ui-card:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+}
+
+.ui-input {
+  transition-property: border-color, box-shadow, background-color, transform;
+}
+
+.ui-input:focus-visible {
+  border-color: rgb(239 68 68 / 0.9);
+  box-shadow: 0 0 0 2px rgb(239 68 68 / 0.18);
+}
+
+.ui-tab {
+  transition-property: transform, color, background-color, border-color;
+}
+
+.ui-tab:active {
+  transform: scale(0.985);
+}
+
+.ui-section-enter {
+  animation: section-enter 180ms var(--ui-ease-snappy);
+}
+
+@keyframes section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ui-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgb(39 39 42 / 0.65);
+}
+
+.ui-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(82 82 91 / 0.35), transparent);
+  animation: skeleton-shimmer 1s var(--ui-ease-snappy) infinite;
+}
+
+@keyframes skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
 }
 
 /* Standings tables: thin scrollbar, low contrast (Firefox + WebKit) */

@@ -12,7 +12,7 @@ export function TeamCard({ team, drivers, selected, onSelect }: TeamCardProps) {
     <button
       type="button"
       onClick={() => onSelect(team.id)}
-      className={`w-full rounded-lg border p-4 text-left transition ${
+      className={`ui-card ui-interactive w-full border p-5 text-left ${
         selected
           ? "border-red-500 bg-zinc-900 shadow-[0_0_0_1px_rgba(239,68,68,0.45)]"
           : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"
@@ -21,7 +21,7 @@ export function TeamCard({ team, drivers, selected, onSelect }: TeamCardProps) {
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wider text-zinc-400">Entrant</p>
-          <h3 className="text-lg font-semibold text-zinc-50">{team.entrant}</h3>
+          <h3 className="text-lg font-semibold leading-tight text-zinc-50">{team.entrant}</h3>
         </div>
         {selected && (
           <span className="rounded border border-red-500/50 bg-red-950/60 px-2 py-1 text-xs text-red-200">

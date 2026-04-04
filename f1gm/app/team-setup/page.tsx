@@ -58,11 +58,11 @@ export default function TeamSetupPage() {
         difficulty,
       });
 
-    if (!result.ok) {
-      setError(result.error);
-      setIsStarting(false);
-      return;
-    }
+      if (!result.ok) {
+        setError(result.error);
+        setIsStarting(false);
+        return;
+      }
 
       router.push(`/dashboard?saveId=${result.data.id}`);
     } finally {
@@ -72,25 +72,25 @@ export default function TeamSetupPage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 px-4 py-8 text-zinc-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-5">
+      <div className="mx-auto max-w-6xl space-y-7">
+        <header className="ui-section-enter rounded-lg border border-zinc-800 bg-zinc-900/60 p-6">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-red-400">F1 General Manager</p>
               <h1 className="mt-1 text-2xl font-semibold">New Save Setup · {seasonYear}</h1>
               <p className="mt-2 text-sm text-zinc-400">Create a local save slot, pick your team, and start your career.</p>
             </div>
-            <Link href="/" className="text-sm text-zinc-400 underline-offset-4 hover:text-zinc-200 hover:underline">Back to Saves</Link>
+            <Link href="/" className="ui-interactive text-sm text-zinc-400 underline-offset-4 hover:text-zinc-200 hover:underline">Back to Saves</Link>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1 text-sm text-zinc-300">
               <span className="text-zinc-400">Save Name</span>
-              <input value={saveName} onChange={(event) => setSaveName(event.target.value)} className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100" />
+              <input value={saveName} onChange={(event) => setSaveName(event.target.value)} className="ui-input w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-zinc-100 outline-none" />
             </label>
             <label className="space-y-1 text-sm text-zinc-300">
               <span className="text-zinc-400">Difficulty</span>
-              <select value={difficulty} onChange={(event) => setDifficulty(event.target.value as SaveDifficulty)} className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100">
+              <select value={difficulty} onChange={(event) => setDifficulty(event.target.value as SaveDifficulty)} className="ui-input w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-zinc-100 outline-none">
                 <option value="easy">Easy</option>
                 <option value="standard">Standard</option>
                 <option value="hard">Hard</option>
@@ -98,9 +98,9 @@ export default function TeamSetupPage() {
             </label>
           </div>
 
-          <div className="mt-4 inline-flex rounded-md border border-zinc-700 bg-zinc-900 p-1">
-            <button type="button" onClick={() => setMode("select")} className={`rounded px-4 py-2 text-sm transition ${mode === "select" ? "bg-red-600 text-white" : "text-zinc-300 hover:text-zinc-100"}`}>Select Existing Team</button>
-            <button type="button" onClick={() => setMode("create")} className={`rounded px-4 py-2 text-sm transition ${mode === "create" ? "bg-red-600 text-white" : "text-zinc-300 hover:text-zinc-100"}`}>Create New Team</button>
+          <div className="mt-5 inline-flex rounded-md border border-zinc-700 bg-zinc-900 p-1">
+            <button type="button" onClick={() => setMode("select")} className={`ui-tab ui-interactive rounded px-4 py-2.5 text-sm font-medium ${mode === "select" ? "bg-red-600 text-white" : "text-zinc-300 hover:text-zinc-100"}`}>Select Existing Team</button>
+            <button type="button" onClick={() => setMode("create")} className={`ui-tab ui-interactive rounded px-4 py-2.5 text-sm font-medium ${mode === "create" ? "bg-red-600 text-white" : "text-zinc-300 hover:text-zinc-100"}`}>Create New Team</button>
           </div>
         </header>
 
@@ -109,7 +109,7 @@ export default function TeamSetupPage() {
             <div>
               <TeamList selectedTeamId={selectedTeamId} onSelectTeam={setSelectedTeamId} />
             </div>
-            <aside className="h-fit rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
+            <aside className="ui-card h-fit rounded-lg border border-zinc-800 bg-zinc-900/60 p-5">
               <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Selection Status</p>
               {selectedTeam ? (
                 <div className="mt-3 space-y-2 text-sm">
@@ -124,7 +124,7 @@ export default function TeamSetupPage() {
         ) : (
           <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
             <CreateTeamForm seasonYear={seasonYear} onCreateTeam={setCustomTeam} />
-            <aside className="h-fit rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
+            <aside className="ui-card h-fit rounded-lg border border-zinc-800 bg-zinc-900/60 p-5">
               <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Custom Team Preview</p>
               {customTeam ? (
                 <div className="mt-3 space-y-2 text-sm text-zinc-300">
@@ -138,8 +138,8 @@ export default function TeamSetupPage() {
           </section>
         )}
 
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
-          <button type="button" onClick={startSave} disabled={isStarting} className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-70">{isStarting ? "Creating save..." : "Create Save & Enter Career"}</button>
+        <div className="ui-section-enter rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
+          <button type="button" onClick={startSave} disabled={isStarting} className="ui-interactive rounded-md bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-70">{isStarting ? "Creating save..." : "Create Save & Enter Career"}</button>
           {error ? <p className="mt-2 text-sm text-red-300">{error}</p> : null}
         </div>
       </div>
