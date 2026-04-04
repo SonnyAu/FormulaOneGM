@@ -86,14 +86,14 @@ export function CreateTeamForm({ seasonYear = 2026, onCreateTeam }: CreateTeamFo
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5 rounded-lg border border-zinc-800 bg-zinc-950 p-5">
-      <div className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={onSubmit} className="ui-section-enter space-y-6 rounded-lg border border-zinc-800 bg-zinc-950 p-6">
+      <div className="grid gap-5 sm:grid-cols-2">
         <label className="space-y-2 text-sm text-zinc-300">
           <span className="text-zinc-400">Constructor Name</span>
           <input
             value={constructorName}
             onChange={(event) => setConstructorName(event.target.value)}
-            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none transition focus:border-red-500"
+            className="ui-input w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-zinc-100 outline-none"
             placeholder="Nova Racing"
           />
         </label>
@@ -103,19 +103,19 @@ export function CreateTeamForm({ seasonYear = 2026, onCreateTeam }: CreateTeamFo
           <input
             value={teamBase}
             onChange={(event) => setTeamBase(event.target.value)}
-            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none transition focus:border-red-500"
+            className="ui-input w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-zinc-100 outline-none"
             placeholder="Silverstone, UK"
           />
         </label>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+      <div className="grid gap-5 sm:grid-cols-[1fr_auto]">
         <label className="space-y-2 text-sm text-zinc-300">
           <span className="text-zinc-400">Chassis Code Prefix (max 3 letters)</span>
           <input
             value={chassisPrefix}
             onChange={(event) => setChassisPrefix(event.target.value.replace(/[^a-z]/gi, "").slice(0, 3))}
-            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 uppercase text-zinc-100 outline-none transition focus:border-red-500"
+            className="ui-input w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 uppercase text-zinc-100 outline-none"
             placeholder="NVR"
             maxLength={3}
           />
@@ -124,7 +124,7 @@ export function CreateTeamForm({ seasonYear = 2026, onCreateTeam }: CreateTeamFo
         <button
           type="button"
           onClick={onRandomPrefix}
-          className="self-end rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-100 transition hover:border-zinc-600"
+          className="ui-interactive self-end rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:border-zinc-600"
         >
           Random Prefix
         </button>
@@ -136,7 +136,7 @@ export function CreateTeamForm({ seasonYear = 2026, onCreateTeam }: CreateTeamFo
           <button
             type="button"
             onClick={() => setChassisNamingPattern("year-based")}
-            className={`rounded-md border px-4 py-2 text-sm transition ${
+            className={`ui-tab ui-interactive rounded-md border px-4 py-2.5 text-sm font-medium ${
               chassisNamingPattern === "year-based"
                 ? "border-red-500 bg-red-950/50 text-red-200"
                 : "border-zinc-700 bg-zinc-900 text-zinc-200"
@@ -147,7 +147,7 @@ export function CreateTeamForm({ seasonYear = 2026, onCreateTeam }: CreateTeamFo
           <button
             type="button"
             onClick={() => setChassisNamingPattern("iteration-based")}
-            className={`rounded-md border px-4 py-2 text-sm transition ${
+            className={`ui-tab ui-interactive rounded-md border px-4 py-2.5 text-sm font-medium ${
               chassisNamingPattern === "iteration-based"
                 ? "border-red-500 bg-red-950/50 text-red-200"
                 : "border-zinc-700 bg-zinc-900 text-zinc-200"
@@ -165,7 +165,7 @@ export function CreateTeamForm({ seasonYear = 2026, onCreateTeam }: CreateTeamFo
           <button
             type="button"
             onClick={onRandomDrivers}
-            className="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-200 transition hover:border-zinc-600"
+            className="ui-interactive rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-600"
           >
             Random Drivers
           </button>
@@ -174,13 +174,13 @@ export function CreateTeamForm({ seasonYear = 2026, onCreateTeam }: CreateTeamFo
           <input
             value={driverOne}
             onChange={(event) => setDriverOne(event.target.value)}
-            className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none transition focus:border-red-500"
+            className="ui-input rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-zinc-100 outline-none"
             placeholder="Driver 1"
           />
           <input
             value={driverTwo}
             onChange={(event) => setDriverTwo(event.target.value)}
-            className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none transition focus:border-red-500"
+            className="ui-input rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-zinc-100 outline-none"
             placeholder="Driver 2"
           />
         </div>
@@ -189,7 +189,7 @@ export function CreateTeamForm({ seasonYear = 2026, onCreateTeam }: CreateTeamFo
       <div className="flex items-center gap-3">
         <button
           type="submit"
-          className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500"
+          className="ui-interactive rounded-md bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500"
         >
           Create Team
         </button>

@@ -82,9 +82,9 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
   if (!saveId) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-100">
-        <section className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center">
+        <section className="ui-section-enter rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center">
           <h1 className="text-2xl font-semibold">Missing save selection</h1>
-          <Link href="/" className="mt-4 inline-flex rounded bg-red-600 px-4 py-2 text-sm font-medium text-white">
+          <Link href="/" className="ui-interactive mt-4 inline-flex rounded bg-red-600 px-4 py-2.5 text-sm font-semibold text-white">
             Go to Saves
           </Link>
         </section>
@@ -95,8 +95,13 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
   if (!summary) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-100">
-        <section className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center">
-          <p className="text-zinc-300">Loading save...</p>
+        <section className="ui-section-enter w-full max-w-3xl rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center">
+          <p className="mb-4 text-zinc-300">Loading save...</p>
+          <div className="space-y-2">
+            <div className="ui-skeleton h-8 rounded-md" />
+            <div className="ui-skeleton h-24 rounded-md" />
+            <div className="ui-skeleton h-24 rounded-md" />
+          </div>
           {sessionError ? <p className="mt-2 text-sm text-red-300">{sessionError}</p> : null}
         </section>
       </main>
@@ -134,16 +139,16 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
       subtitle={`${summary.meta.seasonYear} · Week ${summary.meta.week} · ${summary.upcomingEvent?.name ?? "Preseason"}`}
       sidebar={<DashboardSidebar activeLabel="Dashboard" />}
     >
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={onSubmitDefaultDecision} className="rounded bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-100 hover:bg-zinc-700">Submit default weekly decision</button>
-        <button type="button" onClick={onAdvanceWeek} className="rounded bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-500">Advance week</button>
-        <Link href="/" className="rounded border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 hover:border-zinc-500">Back to saves</Link>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onSubmitDefaultDecision} className="ui-interactive rounded bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-700">Submit default weekly decision</button>
+        <button type="button" onClick={onAdvanceWeek} className="ui-interactive rounded bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500">Advance week</button>
+        <Link href="/" className="ui-interactive rounded border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-zinc-500">Back to saves</Link>
         {sessionError && <p className="text-sm text-red-300">{sessionError}</p>}
         <p className="w-full text-xs text-zinc-500">
           Auto-save: weekly decisions are written to this device after a short delay; advancing the week saves immediately. Switching tabs flushes any pending save.
         </p>
       </div>
-      <div className="grid gap-3 xl:grid-cols-[290px_1fr_340px]">
+      <div className="grid gap-4 xl:grid-cols-[290px_1fr_340px]">
         <StandingsTable constructorStandings={constructorStandings} driverStandings={driverStandings} highlightedTeam={summary.playerTeam.abbreviation} />
 
         <div className="space-y-3">
@@ -160,7 +165,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
           <LinkList title="Recent simulation events" rows={(summary.recentEvents.length ? summary.recentEvents : [{ message: "No events yet" }]).map((entry) => ({ label: entry.message }))} />
         </div>
       </div>
-      <div className="mt-3"><DriverLineupTable drivers={drivers} /></div>
+      <div className="mt-4"><DriverLineupTable drivers={drivers} /></div>
     </DashboardShell>
   );
 }
@@ -173,7 +178,7 @@ function DashboardWithSaveId() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-400">Loading dashboard…</main>}>
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-400"><div className="ui-section-enter w-full max-w-2xl space-y-2"><div className="ui-skeleton h-8 rounded-md" /><div className="ui-skeleton h-28 rounded-md" /></div></main>}>
       <DashboardWithSaveId />
     </Suspense>
   );

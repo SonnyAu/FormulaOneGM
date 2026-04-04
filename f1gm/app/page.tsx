@@ -20,16 +20,20 @@ export default function Home() {
   const pathname = usePathname();
   const [saves, setSaves] = useState<SaveMetadata[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const loadSaves = useCallback(async () => {
+    setIsLoading(true);
     const result = await simulationSession.getSaves();
     if (!result.ok) {
       setMessage(result.error);
+      setIsLoading(false);
       return;
     }
 
     setSaves(result.data);
     setMessage(null);
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -99,27 +103,34 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-950 px-4 py-8 text-zinc-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-6">
+      <div className="mx-auto max-w-6xl space-y-7">
+        <header className="ui-section-enter rounded-lg border border-zinc-800 bg-zinc-900/60 p-6">
           <p className="text-xs uppercase tracking-[0.18em] text-red-400">F1 General Manager</p>
           <h1 className="mt-2 text-3xl font-semibold">Career Saves</h1>
           <p className="mt-2 text-zinc-400">Select a local save to resume, or create a new team management career.</p>
 
           <div className="mt-5 flex flex-wrap gap-2">
-            <Link href="/team-setup" className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500">New Save</Link>
-            <label className="cursor-pointer rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-100 hover:border-zinc-500">
+            <Link href="/team-setup" className="ui-interactive rounded-md bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500">New Save</Link>
+            <label className="ui-interactive cursor-pointer rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:border-zinc-500">
               Import Save
               <input type="file" accept="application/json" className="hidden" onChange={onImport} />
             </label>
           </div>
         </header>
 
-        <section className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
-          {saves.length === 0 ? (
+        <section className="ui-section-enter rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
+          {isLoading ? (
+            <div className="space-y-2">
+              <div className="ui-skeleton h-8 rounded-md" />
+              {Array.from({ length: 5 }).map((_, idx) => (
+                <div key={idx} className="ui-skeleton h-12 rounded-md" />
+              ))}
+            </div>
+          ) : saves.length === 0 ? (
             <div className="rounded border border-zinc-800 bg-zinc-950/60 p-8 text-center">
               <p className="text-lg font-medium">No saves yet</p>
               <p className="mt-1 text-zinc-400">Create your first save to begin your career.</p>
-              <Link href="/team-setup" className="mt-4 inline-flex rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500">Create New Save</Link>
+              <Link href="/team-setup" className="ui-interactive mt-4 inline-flex rounded-md bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500">Create New Save</Link>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -147,10 +158,10 @@ export default function Home() {
                       <td className="p-2">{formatSaveTimestamp(save.createdAt)}</td>
                       <td className="p-2">{formatSaveTimestamp(save.lastPlayedAt)}</td>
                       <td className="p-2">
-                        <div className="flex flex-wrap gap-1">
-                          <button type="button" onClick={() => onResume(save.id)} className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-500">Resume</button>
-                          <button type="button" onClick={() => onExport(save.id)} className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:border-zinc-500">Export</button>
-                          <button type="button" onClick={() => onDelete(save.id)} className="rounded border border-red-700 px-2 py-1 text-xs text-red-200 hover:bg-red-900/40">Delete</button>
+                        <div className="flex flex-wrap gap-1.5">
+                          <button type="button" onClick={() => onResume(save.id)} className="ui-interactive rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-500">Resume</button>
+                          <button type="button" onClick={() => onExport(save.id)} className="ui-interactive rounded border border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-200 hover:border-zinc-500">Export</button>
+                          <button type="button" onClick={() => onDelete(save.id)} className="ui-interactive rounded border border-red-700 px-2.5 py-1 text-xs font-medium text-red-200 hover:bg-red-900/40">Delete</button>
                         </div>
                       </td>
                     </tr>

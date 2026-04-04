@@ -52,8 +52,8 @@ export function StandingsTable({
     "sticky top-0 z-[1] bg-[#1b232e] shadow-[inset_0_-1px_0_0_rgb(39_39_42)]";
 
   return (
-    <section className="rounded border border-zinc-700 bg-[#1b232e] p-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <section className="ui-card rounded border border-zinc-700 bg-[#1b232e] p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-lg font-semibold">
             {view === "constructors" ? "Constructors" : "Drivers"}
@@ -69,8 +69,8 @@ export function StandingsTable({
               aria-selected={view === "constructors"}
               className={
                 view === "constructors"
-                  ? "rounded bg-zinc-700 px-2 py-0.5 text-zinc-100"
-                  : "rounded px-2 py-0.5 text-zinc-400 hover:text-zinc-200"
+                  ? "ui-tab rounded bg-zinc-700 px-2.5 py-1 text-zinc-100"
+                  : "ui-tab ui-interactive rounded px-2.5 py-1 text-zinc-400 hover:text-zinc-200"
               }
               onClick={() => setView("constructors")}
             >
@@ -82,8 +82,8 @@ export function StandingsTable({
               aria-selected={view === "drivers"}
               className={
                 view === "drivers"
-                  ? "rounded bg-zinc-700 px-2 py-0.5 text-zinc-100"
-                  : "rounded px-2 py-0.5 text-zinc-400 hover:text-zinc-200"
+                  ? "ui-tab rounded bg-zinc-700 px-2.5 py-1 text-zinc-100"
+                  : "ui-tab ui-interactive rounded px-2.5 py-1 text-zinc-400 hover:text-zinc-200"
               }
               onClick={() => setView("drivers")}
             >
@@ -166,7 +166,7 @@ type DriverLineupTableProps = {
 
 export function DriverLineupTable({ drivers }: DriverLineupTableProps) {
   return (
-    <section className="rounded border border-zinc-700 bg-[#1b232e] p-3">
+    <section className="ui-card rounded border border-zinc-700 bg-[#1b232e] p-4">
       <h3 className="text-3xl font-semibold">Starting Lineup</h3>
       <table className="mt-2 w-full text-sm">
         <thead>
