@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { DriverLineupTable, StandingsTable } from "@/components/dashboard/DashboardTables";
@@ -19,8 +19,10 @@ type DashboardPageContentProps = {
 };
 
 function DashboardPageContent({ saveId }: DashboardPageContentProps) {
+  const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [raceWeekendActive, setRaceWeekendActive] = useState(false);
 
   useEffect(() => {
     if (!saveId) return;
@@ -39,6 +41,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
       }
 
       setSummary(dashboard.data);
+      setRaceWeekendActive(simulationSession.hasActiveRaceWeekend());
       setSessionError(null);
     };
 
@@ -115,6 +118,11 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
       return;
     }
     setSummary(result.data);
+    if (simulationSession.hasActiveRaceWeekend()) {
+      router.push(`/race-weekend?saveId=${saveId}`);
+      return;
+    }
+    setRaceWeekendActive(false);
   };
 
   const onSubmitDefaultDecision = () => {
@@ -141,7 +149,11 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
     >
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <button type="button" onClick={onSubmitDefaultDecision} className="ui-interactive rounded bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-700">Submit default weekly decision</button>
-        <button type="button" onClick={onAdvanceWeek} className="ui-interactive rounded bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500">Advance week</button>
+        {raceWeekendActive ? (
+          <Link href={`/race-weekend?saveId=${saveId}`} className="ui-interactive rounded bg-amber-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400">Resume race weekend →</Link>
+        ) : (
+          <button type="button" onClick={onAdvanceWeek} className="ui-interactive rounded bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500">Advance week</button>
+        )}
         <Link href="/" className="ui-interactive rounded border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-zinc-500">Back to saves</Link>
         {sessionError && <p className="text-sm text-red-300">{sessionError}</p>}
         <p className="w-full text-xs text-zinc-500">

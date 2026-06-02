@@ -10,31 +10,45 @@ import {
   TeamState,
 } from "@/types/sim";
 
-function createCalendar(seasonYear: number): CalendarEvent[] {
-  const races = [
-    "Bahrain GP",
-    "Saudi Arabian GP",
-    "Australian GP",
-    "Japanese GP",
-    "Miami GP",
-    "Emilia Romagna GP",
-    "Monaco GP",
-    "Canadian GP",
-    "Spanish GP",
-    "Austrian GP",
-  ];
+const SEASON_2026_RACES: Array<{ name: string; trackId: string }> = [
+  { name: "Australian GP", trackId: "melbourne" },
+  { name: "Chinese GP", trackId: "shanghai" },
+  { name: "Japanese GP", trackId: "suzuka" },
+  { name: "Bahrain GP", trackId: "bahrain" },
+  { name: "Saudi Arabian GP", trackId: "jeddah" },
+  { name: "Miami GP", trackId: "miami" },
+  { name: "Canadian GP", trackId: "montreal" },
+  { name: "Monaco GP", trackId: "monaco" },
+  { name: "Barcelona-Catalunya GP", trackId: "catalunya" },
+  { name: "Austrian GP", trackId: "red-bull-ring" },
+  { name: "British GP", trackId: "silverstone" },
+  { name: "Belgian GP", trackId: "spa" },
+  { name: "Hungarian GP", trackId: "hungaroring" },
+  { name: "Dutch GP", trackId: "zandvoort" },
+  { name: "Italian GP", trackId: "monza" },
+  { name: "Spanish GP", trackId: "madring" },
+  { name: "Azerbaijan GP", trackId: "baku" },
+  { name: "Singapore GP", trackId: "marina-bay" },
+  { name: "United States GP", trackId: "cota" },
+  { name: "Mexico City GP", trackId: "mexico-city" },
+  { name: "Sao Paulo GP", trackId: "interlagos" },
+  { name: "Las Vegas GP", trackId: "las-vegas" },
+  { name: "Qatar GP", trackId: "losail" },
+  { name: "Abu Dhabi GP", trackId: "yas-marina" },
+];
 
+function createCalendar(seasonYear: number): CalendarEvent[] {
   const calendar: CalendarEvent[] = [];
   let week = 1;
-  races.forEach((race, index) => {
-    calendar.push({ week, round: index + 1, name: `${race} Prep`, type: "week" });
+  SEASON_2026_RACES.forEach((race, index) => {
+    calendar.push({ week, round: index + 1, name: `${race.name} Prep`, type: "week" });
     week += 1;
-    calendar.push({ week, round: index + 1, name: race, type: "race" });
+    calendar.push({ week, round: index + 1, name: race.name, type: "race", trackId: race.trackId });
     week += 1;
   });
 
-  calendar.push({ week, round: races.length, name: "Development Break", type: "week" });
-  calendar.push({ week: week + 1, round: races.length, name: `${seasonYear} Season Review`, type: "week" });
+  calendar.push({ week, round: SEASON_2026_RACES.length, name: "Development Break", type: "week" });
+  calendar.push({ week: week + 1, round: SEASON_2026_RACES.length, name: `${seasonYear} Season Review`, type: "week" });
   return calendar;
 }
 
@@ -144,6 +158,7 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
     decisionHistory: [],
     raceHistory: [],
     archive: [] as HistoricalArchiveRecord[],
+    activeRaceWeekend: null,
     eventLog: [
       {
         id: `${id}-start`,

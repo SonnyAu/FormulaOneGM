@@ -51,6 +51,11 @@ function migrateSaveData(record: SaveRecord): SaveData | null {
     };
   }
 
+  // v2: interactive race weekends. Older saves simply have none in progress.
+  if (save.season.activeRaceWeekend === undefined) {
+    save.season.activeRaceWeekend = null;
+  }
+
   return save;
 }
 

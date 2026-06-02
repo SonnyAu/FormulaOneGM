@@ -1,6 +1,8 @@
 import { createNewSave } from "@/lib/sim/factory";
-import { runSimulationTick } from "@/lib/sim/engine";
+import { finalizeRaceWeekend, runSimulationTick } from "@/lib/sim/engine";
 import { getDashboardSummary } from "@/lib/sim/selectors";
+import { advancePhase, advanceRace, applyPlayerDecision, autoFinishRace } from "@/lib/sim/raceweekend/raceWeekendEngine";
+import { RaceWeekendState, StrategyDecision } from "@/lib/sim/raceweekend/raceTypes";
 import { deleteSave, listSaveMetadata, readSave, upsertImportedSave, writeSave } from "@/lib/storage/saveRepository";
 import { CreateSaveInput, DashboardSummary, GameActionResult, SaveData, SaveMetadata, TeamDecision } from "@/types/sim";
 
@@ -104,6 +106,63 @@ class SimulationSessionService {
 
   async checkpoint(): Promise<GameActionResult<SaveMetadata>> {
     return this.persistActiveSave();
+  }
+
+  // --- Race weekend ---
+
+  hasActiveRaceWeekend(): boolean {
+    return Boolean(this.activeSave?.season.activeRaceWeekend);
+  }
+
+  getRaceWeekend(): GameActionResult<RaceWeekendState | null> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: this.activeSave.season.activeRaceWeekend ?? null };
+  }
+
+  /** Move practice -> qualifying -> race -> complete. Persists immediately. */
+  async advanceRaceWeekendPhase(): Promise<GameActionResult<RaceWeekendState>> {
+    const weekend = this.activeSave?.season.activeRaceWeekend;
+    if (!this.activeSave || !weekend) return { ok: false, error: "No active race weekend." };
+    advancePhase(weekend);
+    const persisted = await this.persistActiveSave();
+    if (!persisted.ok) return { ok: false, error: persisted.error };
+    return { ok: true, data: weekend };
+  }
+
+  /** Advance the live race by one (or several) laps. */
+  tickRaceWeekend(laps = 1): GameActionResult<RaceWeekendState> {
+    const weekend = this.activeSave?.season.activeRaceWeekend;
+    if (!this.activeSave || !weekend) return { ok: false, error: "No active race weekend." };
+    advanceRace(weekend, laps);
+    this.queueAutosave();
+    return { ok: true, data: weekend };
+  }
+
+  /** Auto-play the remaining race to the flag (skip-to-end). */
+  autoFinishRaceWeekend(): GameActionResult<RaceWeekendState> {
+    const weekend = this.activeSave?.season.activeRaceWeekend;
+    if (!this.activeSave || !weekend) return { ok: false, error: "No active race weekend." };
+    autoFinishRace(weekend);
+    this.queueAutosave();
+    return { ok: true, data: weekend };
+  }
+
+  submitStrategyDecision(decision: StrategyDecision): GameActionResult<RaceWeekendState> {
+    const weekend = this.activeSave?.season.activeRaceWeekend;
+    if (!this.activeSave || !weekend) return { ok: false, error: "No active race weekend." };
+    applyPlayerDecision(weekend, decision);
+    this.queueAutosave();
+    return { ok: true, data: weekend };
+  }
+
+  /** Finalize the weekend: write results into the season, advance week/round. */
+  async completeRaceWeekend(): Promise<GameActionResult<DashboardSummary>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const { save } = finalizeRaceWeekend(this.activeSave);
+    this.activeSave = save;
+    const persisted = await this.persistActiveSave();
+    if (!persisted.ok) return persisted;
+    return this.getDashboard();
   }
 
   async exportSave(saveId: string): Promise<GameActionResult<string>> {

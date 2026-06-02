@@ -1,4 +1,6 @@
-export const SAVE_SCHEMA_VERSION = 1;
+import type { RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
+
+export const SAVE_SCHEMA_VERSION = 2;
 
 export type SaveDifficulty = "easy" | "standard" | "hard";
 
@@ -27,6 +29,8 @@ export type CalendarEvent = {
   round: number;
   name: string;
   type: CalendarEventType;
+  /** Stable track id linking a race to its TrackProfile (race events only). */
+  trackId?: string;
 };
 
 export type TeamType = "works" | "customer";
@@ -160,6 +164,8 @@ export type SeasonState = {
   raceHistory: RaceResult[];
   archive: HistoricalArchiveRecord[];
   eventLog: EventLogEntry[];
+  /** Active interactive race weekend, when a race week is being played. */
+  activeRaceWeekend?: RaceWeekendState | null;
 };
 
 export type SaveData = {
