@@ -23,6 +23,12 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [raceWeekendActive, setRaceWeekendActive] = useState(false);
+  const [driverRows, setDriverRows] = useState<{ driverId: string; name: string; teamAbbreviation: string; points: number }[]>([]);
+
+  const refreshStandings = () => {
+    const result = simulationSession.getStandings();
+    setDriverRows(result.ok ? result.data.drivers : []);
+  };
 
   useEffect(() => {
     if (!saveId) return;
@@ -42,6 +48,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
 
       setSummary(dashboard.data);
       setRaceWeekendActive(simulationSession.hasActiveRaceWeekend());
+      refreshStandings();
       setSessionError(null);
     };
 
@@ -71,16 +78,13 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
   );
 
   const driverStandings = useMemo(() => {
-    const rows: { pos: number; name: string; team: string; pts: number }[] = [];
-    let pos = 1;
-    for (const team of teams) {
-      for (const driverId of team.driverIds) {
-        const d = driverMap.get(driverId);
-        if (d) rows.push({ pos: pos++, name: d.name, team: team.abbreviation, pts: 0 });
-      }
-    }
-    return rows;
-  }, []);
+    return driverRows.map((row, index) => ({
+      pos: index + 1,
+      name: row.name,
+      team: row.teamAbbreviation,
+      pts: row.points,
+    }));
+  }, [driverRows]);
 
   if (!saveId) {
     return (
@@ -118,27 +122,12 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
       return;
     }
     setSummary(result.data);
+    refreshStandings();
     if (simulationSession.hasActiveRaceWeekend()) {
       router.push(`/race-weekend?saveId=${saveId}`);
       return;
     }
     setRaceWeekendActive(false);
-  };
-
-  const onSubmitDefaultDecision = () => {
-    if (!summary) return;
-    const result = simulationSession.submitPlayerDecision({
-      teamId: summary.playerTeam.id,
-      rdSpend: 1_050_000,
-      reliabilitySpend: 420_000,
-      facilitySpend: 360_000,
-      staffSpend: 300_000,
-      sponsorRisk: "balanced",
-      focus: "aero",
-      notes: "Default development allocation",
-    });
-
-    if (!result.ok) setSessionError(result.error);
   };
 
   return (
@@ -148,7 +137,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
       sidebar={<DashboardSidebar activeLabel="Dashboard" />}
     >
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={onSubmitDefaultDecision} className="ui-interactive rounded bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-700">Submit default weekly decision</button>
+        <Link href={`/factory?saveId=${saveId}`} className="ui-interactive rounded bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-700">Factory &amp; weekend plan</Link>
         {raceWeekendActive ? (
           <Link href={`/race-weekend?saveId=${saveId}`} className="ui-interactive rounded bg-amber-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400">Resume race weekend →</Link>
         ) : (
@@ -165,6 +154,14 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
 
         <div className="space-y-3">
           <RecordPanel raceRecord={`${summary.playerTeam.points} pts`} championshipPos={`${constructorStandings.findIndex((row) => row.team === summary.playerTeam.abbreviation) + 1} place`} />
+          <LinkList
+            title="Championship"
+            rows={[
+              { label: "WDC leader", value: summary.driverLeader ? `${summary.driverLeader.name} (${summary.driverLeader.points})` : "—" },
+              { label: "WCC leader", value: `${constructorStandings[0]?.team ?? "—"} (${constructorStandings[0]?.pts ?? 0})` },
+            ]}
+            footerLink="Full standings"
+          />
           <div className="grid gap-3 md:grid-cols-2">
             <LinkList title="Team Leaders" rows={[{ label: `${drivers[0]?.name ?? "Lead Driver"}  |  best finish`, value: "—" }, { label: `${drivers[1]?.name ?? "Second Driver"}  |  avg quali`, value: "—" }, { label: `${drivers[0]?.name ?? "Lead Driver"}  |  overtakes`, value: "0" }]} footerLink="Full roster" />
             <LinkList title="Team Stats" rows={[{ label: "Points", value: String(summary.playerTeam.points) }, { label: "Reliability", value: `${summary.playerTeam.reliability}` }, { label: "Pace", value: `${summary.playerTeam.pace}` }, { label: "Season", value: String(summary.meta.seasonYear) }]} footerLink="Team stats" />

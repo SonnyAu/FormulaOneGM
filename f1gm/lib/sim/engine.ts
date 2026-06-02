@@ -1,9 +1,7 @@
-import { generateAiDecisions } from "@/lib/sim/subsystems/ai";
-import { mergeDecisions, validateDecision } from "@/lib/sim/subsystems/decision";
 import { processDevelopment } from "@/lib/sim/subsystems/development";
-import { processEconomy } from "@/lib/sim/subsystems/economy";
+import { aiWeekendPlan, defaultWeekendPlan, recommendWeekendPlan, weekendPlanToDecision } from "@/lib/sim/subsystems/weekendPlan";
 import { applyRaceWeekendResult, createRaceWeekendFromSeason } from "@/lib/sim/raceweekend/adapter";
-import { EventLogEntry, SaveData, SimulationDelta, TeamDecision } from "@/types/sim";
+import { EventLogEntry, SaveData, SaveDifficulty, SeasonState, SimulationDelta, TeamDecision, TeamState, WeekendPlan } from "@/types/sim";
 
 function event(category: EventLogEntry["category"], message: string, week: number, tick: number, teamId?: string): EventLogEntry {
   return {
@@ -17,6 +15,10 @@ function event(category: EventLogEntry["category"], message: string, week: numbe
   };
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function raceSeed(save: SaveData, round: number): number {
   let hash = 2166136261;
   const source = `${save.meta.id}-${save.season.seasonYear}-${round}`;
@@ -27,11 +29,73 @@ function raceSeed(save: SaveData, round: number): number {
   return hash >>> 0;
 }
 
+/** Passive weekly cash flow: income + base sponsor payout - running costs. No discretionary spend. */
+function applyPassiveWeeklyEconomy(team: TeamState): TeamState {
+  const nextBudget = team.budget + team.weeklyIncome + team.sponsors.basePayout - team.weeklyCosts;
+  return {
+    ...team,
+    budget: nextBudget,
+    morale: clamp(team.morale + (nextBudget >= team.budget ? 1 : -2), 0, 100),
+  };
+}
+
+/** Apply a weekend plan's discretionary spend and sponsor-risk effect (income is handled weekly). */
+function applyWeekendSpendAndSponsor(team: TeamState, decision: TeamDecision): TeamState {
+  const spend = decision.rdSpend + decision.reliabilitySpend + decision.facilitySpend + decision.staffSpend;
+  const sponsorMultiplier = decision.sponsorRisk === "high" ? 1.08 : decision.sponsorRisk === "balanced" ? 1.03 : 1;
+  const sponsorConfidenceDelta = decision.sponsorRisk === "high" ? -2 : decision.sponsorRisk === "balanced" ? 0 : 1;
+  const sponsorBonus = Math.round(team.sponsors.basePayout * (sponsorMultiplier - 1));
+
+  return {
+    ...team,
+    budget: team.budget - spend + sponsorBonus,
+    sponsors: {
+      ...team.sponsors,
+      confidence: clamp(team.sponsors.confidence + sponsorConfidenceDelta, 0, 100),
+    },
+  };
+}
+
+function resolvePlayerPlan(season: SeasonState, team: TeamState, difficulty: SaveDifficulty): WeekendPlan {
+  const committed = season.pendingWeekendPlan;
+  if (committed && !committed.autoManaged) return committed;
+  if (committed && committed.autoManaged) return recommendWeekendPlan(team, season).plan;
+  return difficulty === "easy" ? recommendWeekendPlan(team, season).plan : defaultWeekendPlan();
+}
+
 /**
- * Advance the season by one tick. Processes weekly decisions/economy/development. When the
- * current week is a race week, instead of auto-simulating it launches an interactive race
- * weekend (set on `season.activeRaceWeekend`) and does NOT advance the week/round - the player
- * must play it out, after which `finalizeRaceWeekend` records the result and advances time.
+ * Resolve the per-weekend factory development for every team: the player's committed plan
+ * (or the advisor's recommendation when auto-managed / on easy), and AI plans from personality.
+ * Applies discretionary spend + R&D progress, then clears the committed plan.
+ */
+function applyWeekendDevelopment(season: SeasonState, playerTeamId: string, difficulty: SaveDifficulty): EventLogEntry[] {
+  const events: EventLogEntry[] = [];
+  const week = season.currentWeek;
+
+  for (const team of Object.values(season.teams)) {
+    const plan = team.id === playerTeamId ? resolvePlayerPlan(season, team, difficulty) : aiWeekendPlan(team);
+    const decision = weekendPlanToDecision(team, plan, week, season.tick, team.id === playerTeamId ? "player" : "ai");
+
+    let updated = applyWeekendSpendAndSponsor(team, decision);
+    updated = processDevelopment(updated, decision, week);
+    season.teams[team.id] = updated;
+    season.decisionHistory.push(decision);
+  }
+
+  const player = season.teams[playerTeamId];
+  if (player) {
+    events.push(event("rd", `${player.abbreviation} development plan applied for the race weekend.`, week, season.tick, playerTeamId));
+  }
+
+  season.pendingWeekendPlan = null;
+  return events;
+}
+
+/**
+ * Advance the season by one week. Runs passive economy for all teams. On a race week it launches
+ * the interactive race weekend (set on `season.activeRaceWeekend`) and does NOT advance the
+ * week/round - the player plays it out, after which `finalizeRaceWeekend` resolves development,
+ * records the result and advances time.
  */
 export function runSimulationTick(save: SaveData, playerDecisions: TeamDecision[]): { save: SaveData; delta: SimulationDelta } {
   const next = structuredClone(save) as SaveData;
@@ -44,24 +108,14 @@ export function runSimulationTick(save: SaveData, playerDecisions: TeamDecision[
   }
 
   season.tick += 1;
-
-  const aiDecisions = generateAiDecisions(season, next.meta.playerTeamId);
-  const mergedDecisions = mergeDecisions(season, [...playerDecisions, ...aiDecisions]).filter(validateDecision);
-
+  if (playerDecisions.length) season.decisionHistory.push(...playerDecisions);
   season.pendingDecisions = [];
-  season.decisionHistory.push(...mergedDecisions);
 
   const events: EventLogEntry[] = [];
 
-  mergedDecisions.forEach((decision) => {
-    const team = season.teams[decision.teamId];
-    if (!team) return;
-
-    let updated = processEconomy(team, decision);
-    updated = processDevelopment(updated, decision, season.currentWeek);
-    season.teams[team.id] = updated;
-    events.push(event("finance", `${team.abbreviation} budget updated after decision processing.`, season.currentWeek, season.tick, team.id));
-  });
+  for (const team of Object.values(season.teams)) {
+    season.teams[team.id] = applyPassiveWeeklyEconomy(team);
+  }
 
   const calendarEvent = season.calendar.find((entry) => entry.week === season.currentWeek) ?? null;
 
@@ -71,7 +125,7 @@ export function runSimulationTick(save: SaveData, playerDecisions: TeamDecision[
     events.push(event("race", `Race weekend underway: ${calendarEvent.name}.`, season.currentWeek, season.tick));
     next.meta.updatedAt = new Date().toISOString();
     season.eventLog.push(...events);
-    const delta: SimulationDelta = { tick: season.tick, week: season.currentWeek, appliedDecisions: mergedDecisions, events };
+    const delta: SimulationDelta = { tick: season.tick, week: season.currentWeek, appliedDecisions: [], events };
     return { save: next, delta };
   }
 
@@ -83,7 +137,7 @@ export function runSimulationTick(save: SaveData, playerDecisions: TeamDecision[
   const delta: SimulationDelta = {
     tick: season.tick,
     week: season.currentWeek,
-    appliedDecisions: mergedDecisions,
+    appliedDecisions: [],
     events,
   };
 
@@ -91,8 +145,9 @@ export function runSimulationTick(save: SaveData, playerDecisions: TeamDecision[
 }
 
 /**
- * Record a completed (or skipped) race weekend back into the season: applies points/standings,
- * appends the RaceResult, clears the active weekend, then advances the week and round.
+ * Finalize a completed (or skipped) race weekend: resolve the weekend's factory development,
+ * write race results into the season, append the RaceResult, clear the active weekend, then
+ * advance the week and round.
  */
 export function finalizeRaceWeekend(save: SaveData): { save: SaveData; delta: SimulationDelta } {
   const next = structuredClone(save) as SaveData;
@@ -107,6 +162,8 @@ export function finalizeRaceWeekend(save: SaveData): { save: SaveData; delta: Si
     season.currentRound += 1;
     events.push(event("race", `Race weekend completed: ${weekend.raceName}.`, season.currentWeek, season.tick));
   }
+
+  events.push(...applyWeekendDevelopment(season, next.meta.playerTeamId, next.meta.difficulty));
 
   season.activeRaceWeekend = null;
   season.currentWeek += 1;

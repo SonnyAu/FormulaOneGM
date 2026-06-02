@@ -144,8 +144,11 @@ function buildResult(weekend: RaceWeekendState): RaceWeekendResult {
   return { trackId: weekend.trackId, raceName: weekend.raceName, classification: rows };
 }
 
-/** Auto-play the remaining race to completion (used by demo / quick-sim). */
+/** Auto-play through any remaining phases and the race to completion (used by skip / demo / quick-sim). */
 export function autoFinishRace(weekend: RaceWeekendState): RaceWeekendState {
+  while (weekend.phase === "practice" || weekend.phase === "qualifying") {
+    advancePhase(weekend);
+  }
   if (weekend.phase !== "race" || !weekend.race) return weekend;
   while (!weekend.race.finished) {
     advanceRaceLap(weekend.race, weekend.entries, weekend.track, weekend.rng);

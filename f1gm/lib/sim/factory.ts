@@ -158,7 +158,9 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
     decisionHistory: [],
     raceHistory: [],
     archive: [] as HistoricalArchiveRecord[],
+    driverStandings: {},
     activeRaceWeekend: null,
+    pendingWeekendPlan: null,
     eventLog: [
       {
         id: `${id}-start`,

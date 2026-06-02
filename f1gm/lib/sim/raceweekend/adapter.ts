@@ -1,13 +1,37 @@
 import { teams as teamData } from "@/data/teams";
 import { driverMap } from "@/data/drivers";
 import { getDriverProfile } from "@/data/driverProfiles";
-import { getCarProfile } from "@/data/carProfiles";
+import { carProfiles, getCarProfile } from "@/data/carProfiles";
 import { createRaceWeekend } from "@/lib/sim/raceweekend/raceWeekendEngine";
-import { RaceEntry, RaceWeekendResult, RaceWeekendState, StrategyPersonality } from "@/lib/sim/raceweekend/raceTypes";
-import { CalendarEvent, RaceResult, SeasonState, TeamState } from "@/types/sim";
+import { CarProfile, RaceEntry, RaceWeekendResult, RaceWeekendState, StrategyPersonality } from "@/lib/sim/raceweekend/raceTypes";
+import { CalendarEvent, DriverRaceResult, RaceResult, SeasonState, TeamState } from "@/types/sim";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+// Reference baselines roughly matching a freshly-created team in factory.ts, so season
+// development of TeamState.car nudges the static CarProfile (and therefore race pace).
+const BASE_PACE = 60;
+const BASE_EFFICIENCY = 58;
+const BASE_RELIABILITY = 65;
+
+/** Shift a static CarProfile by how far the team's developed car stats have moved from baseline. */
+function developCar(base: CarProfile, car: TeamState["car"]): CarProfile {
+  const paceDelta = (car.pace - BASE_PACE) * 0.5;
+  const efficiencyDelta = (car.efficiency - BASE_EFFICIENCY) * 0.4;
+  const reliabilityDelta = (car.reliability - BASE_RELIABILITY) * 0.5;
+
+  return {
+    ...base,
+    overall: clamp(base.overall + paceDelta * 0.6, 40, 99),
+    topSpeed: clamp(base.topSpeed + paceDelta, 40, 99),
+    downforce: clamp(base.downforce + paceDelta, 40, 99),
+    mechanicalGrip: clamp(base.mechanicalGrip + paceDelta, 40, 99),
+    tireWear: clamp(base.tireWear + efficiencyDelta, 40, 99),
+    cooling: clamp(base.cooling + efficiencyDelta * 0.5, 40, 99),
+    reliability: clamp(base.reliability + reliabilityDelta, 40, 99),
+  };
 }
 
 function personalityFor(team: TeamState): StrategyPersonality {
@@ -27,8 +51,17 @@ function driverIdsForTeam(teamId: string): string[] {
   return [`${teamId}-d1`, `${teamId}-d2`];
 }
 
+/**
+ * The CarProfile actually used in races: the tuned static profile for known teams nudged by
+ * season development, or the live-derived profile for unknown teams (e.g. custom player).
+ */
+export function getEffectiveCarProfile(teamState: TeamState): CarProfile {
+  const baseCar = getCarProfile(teamState.id, teamState.car);
+  return carProfiles[teamState.id] ? developCar(baseCar, teamState.car) : baseCar;
+}
+
 function buildEntry(teamState: TeamState, driverId: string, isPlayer: boolean): RaceEntry {
-  const car = getCarProfile(teamState.id, teamState.car);
+  const car = getEffectiveCarProfile(teamState);
   const driverInfo = driverMap.get(driverId);
   const driver = getDriverProfile(driverId, driverInfo?.name ?? `${teamState.abbreviation} Driver`, 75);
   const personality = personalityFor(teamState);
@@ -97,6 +130,8 @@ export function applyRaceWeekendResult(season: SeasonState, weekend: RaceWeekend
   const result: RaceWeekendResult = weekend.result ?? { trackId: weekend.trackId, raceName: weekend.raceName, classification: [] };
 
   const aggregates = new Map<string, TeamAggregate>();
+  const driverResults: DriverRaceResult[] = [];
+
   for (const row of result.classification) {
     const agg = aggregates.get(row.teamId) ?? { teamId: row.teamId, points: 0, bestPosition: Infinity, allDnf: true };
     agg.points += row.points;
@@ -105,6 +140,22 @@ export function applyRaceWeekendResult(season: SeasonState, weekend: RaceWeekend
       if (row.position < agg.bestPosition) agg.bestPosition = row.position;
     }
     aggregates.set(row.teamId, agg);
+
+    driverResults.push({
+      driverId: row.driverId,
+      teamId: row.teamId,
+      position: row.position,
+      points: row.points,
+      dnf: row.dnf,
+      hasFastestLap: row.hasFastestLap,
+    });
+
+    // World Drivers' Championship.
+    const entry = season.driverStandings[row.driverId] ?? { driverId: row.driverId, points: 0, wins: 0, podiums: 0 };
+    entry.points += row.points;
+    if (!row.dnf && row.position === 1) entry.wins += 1;
+    if (!row.dnf && row.position <= 3) entry.podiums += 1;
+    season.driverStandings[row.driverId] = entry;
   }
 
   const ranked = [...aggregates.values()].sort((a, b) => a.bestPosition - b.bestPosition);
@@ -129,5 +180,6 @@ export function applyRaceWeekendResult(season: SeasonState, weekend: RaceWeekend
     raceName: weekend.raceName,
     week: season.currentWeek,
     finishingOrder,
+    driverResults,
   };
 }

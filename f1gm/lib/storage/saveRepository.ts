@@ -56,6 +56,16 @@ function migrateSaveData(record: SaveRecord): SaveData | null {
     save.season.activeRaceWeekend = null;
   }
 
+  // v3: per-weekend factory plan. Older saves have none committed.
+  if (save.season.pendingWeekendPlan === undefined) {
+    save.season.pendingWeekendPlan = null;
+  }
+
+  // v4: driver championship. Older saves have no driver-level history.
+  if (save.season.driverStandings === undefined) {
+    save.season.driverStandings = {};
+  }
+
   return save;
 }
 

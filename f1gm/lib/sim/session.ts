@@ -1,10 +1,20 @@
 import { createNewSave } from "@/lib/sim/factory";
 import { finalizeRaceWeekend, runSimulationTick } from "@/lib/sim/engine";
-import { getDashboardSummary } from "@/lib/sim/selectors";
+import {
+  CalendarRow,
+  getCalendarView,
+  getDashboardSummary,
+  getRaceResultsView,
+  getStandings,
+  getTeamManagement,
+  getWeekendPlanRecommendation,
+  RaceResultRow,
+  TeamManagement,
+} from "@/lib/sim/selectors";
 import { advancePhase, advanceRace, applyPlayerDecision, autoFinishRace } from "@/lib/sim/raceweekend/raceWeekendEngine";
 import { RaceWeekendState, StrategyDecision } from "@/lib/sim/raceweekend/raceTypes";
 import { deleteSave, listSaveMetadata, readSave, upsertImportedSave, writeSave } from "@/lib/storage/saveRepository";
-import { CreateSaveInput, DashboardSummary, GameActionResult, SaveData, SaveMetadata, TeamDecision } from "@/types/sim";
+import { CreateSaveInput, DashboardSummary, GameActionResult, SaveData, SaveMetadata, TeamDecision, WeekendPlan } from "@/types/sim";
 
 const AUTOSAVE_DELAY_MS = 600;
 
@@ -70,6 +80,42 @@ class SimulationSessionService {
       return { ok: false, error: "No active save loaded." };
     }
     return { ok: true, data: getDashboardSummary(this.activeSave) };
+  }
+
+  // --- Management selectors ---
+
+  getTeamManagement(): GameActionResult<TeamManagement> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const data = getTeamManagement(this.activeSave);
+    return data ? { ok: true, data } : { ok: false, error: "Player team not found." };
+  }
+
+  getWeekendPlanRecommendation(): GameActionResult<{ plan: WeekendPlan; rationale: string }> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const data = getWeekendPlanRecommendation(this.activeSave);
+    return data ? { ok: true, data } : { ok: false, error: "Player team not found." };
+  }
+
+  commitWeekendPlan(plan: WeekendPlan): GameActionResult<void> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    this.activeSave.season.pendingWeekendPlan = plan;
+    this.queueAutosave();
+    return { ok: true, data: undefined };
+  }
+
+  getCalendar(): GameActionResult<CalendarRow[]> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getCalendarView(this.activeSave) };
+  }
+
+  getStandings(): GameActionResult<ReturnType<typeof getStandings>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getStandings(this.activeSave) };
+  }
+
+  getRaceResults(): GameActionResult<RaceResultRow[]> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getRaceResultsView(this.activeSave) };
   }
 
   submitPlayerDecision(decision: Omit<TeamDecision, "week" | "tick" | "source">): GameActionResult<void> {

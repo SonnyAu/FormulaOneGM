@@ -1,6 +1,6 @@
 import type { RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
 
-export const SAVE_SCHEMA_VERSION = 2;
+export const SAVE_SCHEMA_VERSION = 4;
 
 export type SaveDifficulty = "easy" | "standard" | "hard";
 
@@ -47,6 +47,15 @@ export type TeamDecision = {
   focus: "balanced" | "aero" | "power" | "mechanical";
   notes?: string;
   source: "player" | "ai";
+};
+
+/** Casual, per-race-weekend factory plan the player commits during a Prep week. */
+export type WeekendPlan = {
+  developmentFocus: "aero" | "power" | "mechanical" | "reliability" | "balanced";
+  investmentLevel: "save" | "steady" | "push";
+  facilityUpgrade: "none" | "factory" | "cfd" | "simulator";
+  sponsorRisk: "low" | "balanced" | "high";
+  autoManaged: boolean;
 };
 
 export type TeamState = {
@@ -110,12 +119,30 @@ export type TeamUpgradeProject = {
   completed: boolean;
 };
 
+export type DriverRaceResult = {
+  driverId: string;
+  teamId: string;
+  position: number;
+  points: number;
+  dnf: boolean;
+  hasFastestLap: boolean;
+};
+
 export type RaceResult = {
   seasonYear: number;
   round: number;
   raceName: string;
   week: number;
   finishingOrder: Array<{ teamId: string; points: number; dnf: boolean }>;
+  /** Per-driver classification (absent on saves created before driver standings existed). */
+  driverResults?: DriverRaceResult[];
+};
+
+export type DriverChampionshipEntry = {
+  driverId: string;
+  points: number;
+  wins: number;
+  podiums: number;
 };
 
 export type EventLogEntry = {
@@ -164,8 +191,12 @@ export type SeasonState = {
   raceHistory: RaceResult[];
   archive: HistoricalArchiveRecord[];
   eventLog: EventLogEntry[];
+  /** World Drivers' Championship points by driver id. */
+  driverStandings: Record<string, DriverChampionshipEntry>;
   /** Active interactive race weekend, when a race week is being played. */
   activeRaceWeekend?: RaceWeekendState | null;
+  /** Player's committed factory plan for the upcoming race weekend. */
+  pendingWeekendPlan?: WeekendPlan | null;
 };
 
 export type SaveData = {
@@ -193,6 +224,7 @@ export type DashboardSummary = {
     reliability: number;
   };
   standings: Array<{ teamId: string; abbreviation: string; points: number }>;
+  driverLeader: { name: string; points: number } | null;
   upcomingEvent: CalendarEvent | null;
   recentEvents: EventLogEntry[];
 };
