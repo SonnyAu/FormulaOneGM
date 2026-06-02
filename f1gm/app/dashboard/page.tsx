@@ -23,6 +23,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [raceWeekendActive, setRaceWeekendActive] = useState(false);
+  const [seasonComplete, setSeasonComplete] = useState(false);
   const [driverRows, setDriverRows] = useState<{ driverId: string; name: string; teamAbbreviation: string; points: number }[]>([]);
 
   const refreshStandings = () => {
@@ -48,6 +49,8 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
 
       setSummary(dashboard.data);
       setRaceWeekendActive(simulationSession.hasActiveRaceWeekend());
+      const complete = simulationSession.isSeasonComplete();
+      setSeasonComplete(complete.ok ? complete.data : false);
       refreshStandings();
       setSessionError(null);
     };
@@ -128,6 +131,8 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
       return;
     }
     setRaceWeekendActive(false);
+    const complete = simulationSession.isSeasonComplete();
+    setSeasonComplete(complete.ok ? complete.data : false);
   };
 
   return (
@@ -138,7 +143,11 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
     >
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Link href={`/factory?saveId=${saveId}`} className="ui-interactive rounded bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-700">Factory &amp; weekend plan</Link>
-        {raceWeekendActive ? (
+        {seasonComplete ? (
+          <Link href={`/season-review?saveId=${saveId}`} className="ui-interactive rounded bg-amber-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400">
+            Season Review →
+          </Link>
+        ) : raceWeekendActive ? (
           <Link href={`/race-weekend?saveId=${saveId}`} className="ui-interactive rounded bg-amber-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400">Resume race weekend →</Link>
         ) : (
           <button type="button" onClick={onAdvanceWeek} className="ui-interactive rounded bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500">Advance week</button>
@@ -170,7 +179,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
         </div>
 
         <div className="space-y-3">
-          <Headlines teamName={summary.playerTeam.name} />
+          <Headlines teamName={summary.playerTeam.name} headlines={summary.recentEvents} newsFeedHref={`/news?saveId=${saveId}`} />
           <LinkList title="Recent simulation events" rows={(summary.recentEvents.length ? summary.recentEvents : [{ message: "No events yet" }]).map((entry) => ({ label: entry.message }))} />
         </div>
       </div>

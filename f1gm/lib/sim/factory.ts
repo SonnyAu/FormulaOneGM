@@ -1,9 +1,11 @@
 import { teams } from "@/data/teams";
+import { buildInitialAcademy, buildRosterFromTeams } from "@/lib/sim/roster";
 import { TeamSelection } from "@/types/f1";
 import {
   CalendarEvent,
   CreateSaveInput,
   HistoricalArchiveRecord,
+  SAVE_SCHEMA_VERSION,
   SaveData,
   SaveMetadata,
   SeasonState,
@@ -37,7 +39,7 @@ const SEASON_2026_RACES: Array<{ name: string; trackId: string }> = [
   { name: "Abu Dhabi GP", trackId: "yas-marina" },
 ];
 
-function createCalendar(seasonYear: number): CalendarEvent[] {
+export function createCalendar(seasonYear: number): CalendarEvent[] {
   const calendar: CalendarEvent[] = [];
   let week = 1;
   SEASON_2026_RACES.forEach((race, index) => {
@@ -129,13 +131,25 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
 
   const teamsById = Object.fromEntries(gameTeams.map((team) => [team.id, team]));
 
+  const customDrivers =
+    selection.mode === "custom"
+      ? {
+          teamId: playerTeamId,
+          driverOne: selection.team.driverOne,
+          driverTwo: selection.team.driverTwo,
+        }
+      : undefined;
+
+  const roster = buildRosterFromTeams(seasonYear, customDrivers);
+  const academy = buildInitialAcademy(seasonYear);
+
   const meta: SaveMetadata = {
     id,
     name: name.trim() || `${seasonYear} Career Save`,
     createdAt: now,
     updatedAt: now,
     lastPlayedAt: now,
-    version: 1,
+    version: SAVE_SCHEMA_VERSION,
     playerTeamId,
     playerTeamName: resolvePlayerTeamName(selection),
     seasonYear,
@@ -161,6 +175,8 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
     driverStandings: {},
     activeRaceWeekend: null,
     pendingWeekendPlan: null,
+    roster,
+    academy,
     eventLog: [
       {
         id: `${id}-start`,

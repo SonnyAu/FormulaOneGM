@@ -17,7 +17,7 @@ const menuSections: Array<{ label: string; links: MenuLink[] }> = [
       { label: "Race Weekend", href: "/race-weekend" },
       { label: "Results", href: "/results" },
       { label: "Regulations" },
-      { label: "News Feed" },
+      { label: "News Feed", href: "/news" },
     ],
   },
   {
@@ -32,7 +32,7 @@ const menuSections: Array<{ label: string; links: MenuLink[] }> = [
   },
   {
     label: "Drivers",
-    links: [{ label: "Contracts" }, { label: "Scouting" }, { label: "Transfer List" }, { label: "Academy" }],
+    links: [{ label: "Contracts" }, { label: "Scouting" }, { label: "Transfer List" }, { label: "Academy", href: "/academy" }],
   },
   {
     label: "Stats",

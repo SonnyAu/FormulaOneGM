@@ -1,3 +1,4 @@
+import { buildDriverSeasonInfo, buildInitialAcademy, buildRosterFromTeams } from "@/lib/sim/roster";
 import { idbDelete, idbGet, idbGetAll, idbPut } from "@/lib/storage/indexedDb";
 import { SAVE_SCHEMA_VERSION, SaveData, SaveMetadata } from "@/types/sim";
 
@@ -64,6 +65,28 @@ function migrateSaveData(record: SaveRecord): SaveData | null {
   // v4: driver championship. Older saves have no driver-level history.
   if (save.season.driverStandings === undefined) {
     save.season.driverStandings = {};
+  }
+
+  // v5: per-save roster, academy, season awards support.
+  if (save.season.roster === undefined || Object.keys(save.season.roster).length === 0) {
+    save.season.roster = buildRosterFromTeams(save.season.seasonYear);
+    if (save.season.teams["custom-player-team"]) {
+      const teamId = "custom-player-team";
+      save.season.roster[`${teamId}-d1`] = buildDriverSeasonInfo(`${teamId}-d1`, teamId, save.season.seasonYear, {
+        name: "Driver 1",
+        debutYear: save.season.seasonYear,
+        age: 22,
+      });
+      save.season.roster[`${teamId}-d2`] = buildDriverSeasonInfo(`${teamId}-d2`, teamId, save.season.seasonYear, {
+        name: "Driver 2",
+        debutYear: save.season.seasonYear,
+        age: 21,
+      });
+    }
+  }
+
+  if (save.season.academy === undefined) {
+    save.season.academy = buildInitialAcademy(save.season.seasonYear);
   }
 
   return save;

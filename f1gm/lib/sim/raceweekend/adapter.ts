@@ -2,6 +2,7 @@ import { teams as teamData } from "@/data/teams";
 import { driverMap } from "@/data/drivers";
 import { getDriverProfile } from "@/data/driverProfiles";
 import { carProfiles, getCarProfile } from "@/data/carProfiles";
+import { activeDriversForTeam } from "@/lib/sim/roster";
 import { createRaceWeekend } from "@/lib/sim/raceweekend/raceWeekendEngine";
 import { CarProfile, RaceEntry, RaceWeekendResult, RaceWeekendState, StrategyPersonality } from "@/lib/sim/raceweekend/raceTypes";
 import { CalendarEvent, DriverRaceResult, RaceResult, SeasonState, TeamState } from "@/types/sim";
@@ -44,10 +45,13 @@ function personalityFor(team: TeamState): StrategyPersonality {
 
 const teamDataById = new Map(teamData.map((team) => [team.id, team]));
 
-function driverIdsForTeam(teamId: string): string[] {
+function driverIdsForTeam(season: SeasonState, teamId: string): string[] {
+  if (season.roster && Object.keys(season.roster).length > 0) {
+    const fromRoster = activeDriversForTeam(season.roster, teamId);
+    if (fromRoster.length > 0) return fromRoster;
+  }
   const data = teamDataById.get(teamId);
   if (data) return [...data.driverIds];
-  // Custom player team etc.: synthesize two entries.
   return [`${teamId}-d1`, `${teamId}-d2`];
 }
 
@@ -60,10 +64,13 @@ export function getEffectiveCarProfile(teamState: TeamState): CarProfile {
   return carProfiles[teamState.id] ? developCar(baseCar, teamState.car) : baseCar;
 }
 
-function buildEntry(teamState: TeamState, driverId: string, isPlayer: boolean): RaceEntry {
+function buildEntry(season: SeasonState, teamState: TeamState, driverId: string, isPlayer: boolean): RaceEntry {
   const car = getEffectiveCarProfile(teamState);
+  const rosterDriver = season.roster?.[driverId];
   const driverInfo = driverMap.get(driverId);
-  const driver = getDriverProfile(driverId, driverInfo?.name ?? `${teamState.abbreviation} Driver`, 75);
+  const driver =
+    rosterDriver?.profile ??
+    getDriverProfile(driverId, driverInfo?.name ?? rosterDriver?.name ?? `${teamState.abbreviation} Driver`, 75);
   const personality = personalityFor(teamState);
   // Stronger overall packages make sharper strategy calls.
   const skill = clamp((car.overall * 0.6 + driver.overall * 0.4 - 58) / 40, 0.2, 1);
@@ -71,7 +78,7 @@ function buildEntry(teamState: TeamState, driverId: string, isPlayer: boolean): 
   return {
     driverId,
     teamId: teamState.id,
-    driverName: driver.name,
+    driverName: rosterDriver?.name ?? driver.name,
     abbreviation: teamState.abbreviation,
     carNumber: driverInfo?.number ?? 0,
     isPlayer,
@@ -88,8 +95,8 @@ export function buildEntriesFromSeason(season: SeasonState, playerTeamId: string
   const entries: RaceEntry[] = [];
   for (const teamState of Object.values(season.teams)) {
     const isPlayer = teamState.id === playerTeamId;
-    for (const driverId of driverIdsForTeam(teamState.id)) {
-      entries.push(buildEntry(teamState, driverId, isPlayer));
+    for (const driverId of driverIdsForTeam(season, teamState.id)) {
+      entries.push(buildEntry(season, teamState, driverId, isPlayer));
     }
   }
   return entries;
@@ -174,6 +181,19 @@ export function applyRaceWeekendResult(season: SeasonState, weekend: RaceWeekend
     if (!agg.allDnf && agg.bestPosition <= 3) team.standings.podiums += 1;
   });
 
+  const poleDriverId = weekend.qualifying?.grid[0];
+  let fastestPitStop: RaceResult["fastestPitStop"];
+  const pitEvents = weekend.race?.pitEvents ?? [];
+  if (pitEvents.length > 0) {
+    const best = pitEvents.reduce((a, b) => (a.stopTimeSeconds < b.stopTimeSeconds ? a : b));
+    const entry = weekend.entries.find((e) => e.driverId === best.driverId);
+    fastestPitStop = {
+      driverId: best.driverId,
+      teamId: entry?.teamId ?? "",
+      stopTimeSeconds: best.stopTimeSeconds,
+    };
+  }
+
   return {
     seasonYear: season.seasonYear,
     round: weekend.round,
@@ -181,5 +201,7 @@ export function applyRaceWeekendResult(season: SeasonState, weekend: RaceWeekend
     week: season.currentWeek,
     finishingOrder,
     driverResults,
+    poleDriverId,
+    fastestPitStop,
   };
 }

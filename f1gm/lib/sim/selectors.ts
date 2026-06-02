@@ -1,5 +1,8 @@
 import { driverMap } from "@/data/drivers";
 import { teams as teamData } from "@/data/teams";
+import { getLikelyRetirements, getSeasonAwards, isSeasonComplete } from "@/lib/sim/awards";
+import { getNewsFeed } from "@/lib/sim/news";
+import { driverNameFromRoster } from "@/lib/sim/roster";
 import { getEffectiveCarProfile } from "@/lib/sim/raceweekend/adapter";
 import { recommendWeekendPlan } from "@/lib/sim/subsystems/weekendPlan";
 import { CarProfile } from "@/lib/sim/raceweekend/raceTypes";
@@ -13,7 +16,10 @@ export function getDashboardSummary(save: SaveData): DashboardSummary {
 
   const topDriver = Object.values(save.season.driverStandings).sort((a, b) => b.points - a.points || b.wins - a.wins)[0];
   const driverLeader = topDriver
-    ? { name: driverMap.get(topDriver.driverId)?.name ?? topDriver.driverId, points: topDriver.points }
+    ? {
+        name: driverDisplayName(save, topDriver.driverId, save.season.teams[save.season.roster?.[topDriver.driverId]?.teamId ?? ""]?.abbreviation ?? "-"),
+        points: topDriver.points,
+      }
     : null;
 
   return {
@@ -107,21 +113,37 @@ export type DriverStandingRow = { driverId: string; name: string; teamAbbreviati
 /** Map every known and synthetic driver id to a display name + team abbreviation. */
 function buildDriverTeamMap(save: SaveData): Map<string, { abbreviation: string; teamId: string }> {
   const map = new Map<string, { abbreviation: string; teamId: string }>();
+  const roster = save.season.roster ?? {};
+
+  for (const driver of Object.values(roster)) {
+    if (!driver.active) continue;
+    map.set(driver.driverId, {
+      abbreviation: save.season.teams[driver.teamId]?.abbreviation ?? "-",
+      teamId: driver.teamId,
+    });
+  }
+
   for (const team of teamData) {
     for (const driverId of team.driverIds) {
-      map.set(driverId, { abbreviation: team.abbreviation, teamId: team.id });
+      if (!map.has(driverId)) {
+        map.set(driverId, { abbreviation: team.abbreviation, teamId: team.id });
+      }
     }
   }
-  // Custom-team / synthetic driver ids (e.g. "<teamId>-d1") seen in driver standings or results.
+
   for (const driverId of Object.keys(save.season.driverStandings)) {
     if (map.has(driverId)) continue;
-    const teamId = driverId.replace(/-d[12]$/, "");
+    const rosterEntry = roster[driverId];
+    const teamId = rosterEntry?.teamId ?? driverId.replace(/-d[12]$/, "");
     map.set(driverId, { abbreviation: save.season.teams[teamId]?.abbreviation ?? "-", teamId });
   }
   return map;
 }
 
-function driverDisplayName(driverId: string, abbreviation: string): string {
+function driverDisplayName(save: SaveData, driverId: string, abbreviation: string): string {
+  if (save.season.roster) {
+    return driverNameFromRoster(save.season.roster, driverId, driverMap.get(driverId)?.name ?? `${abbreviation} Driver`);
+  }
   return driverMap.get(driverId)?.name ?? `${abbreviation} Driver`;
 }
 
@@ -147,7 +169,7 @@ export function getStandings(save: SaveData): { constructors: ConstructorStandin
       const entry = save.season.driverStandings[driverId];
       return {
         driverId,
-        name: driverDisplayName(driverId, abbreviation),
+        name: driverDisplayName(save, driverId, abbreviation),
         teamAbbreviation: abbreviation,
         points: entry?.points ?? 0,
         wins: entry?.wins ?? 0,
@@ -184,7 +206,7 @@ export function getRaceResultsView(save: SaveData): RaceResultRow[] {
               const abbr = driverTeam.get(row.driverId)?.abbreviation ?? abbreviation(row.teamId);
               return {
                 driverId: row.driverId,
-                name: driverDisplayName(row.driverId, abbr),
+                name: driverDisplayName(save, row.driverId, abbr),
                 teamAbbreviation: abbr,
                 position: row.position,
                 points: row.points,
@@ -193,5 +215,32 @@ export function getRaceResultsView(save: SaveData): RaceResultRow[] {
               };
             })
         : null,
+    }));
+}
+
+export { getLikelyRetirements, getNewsFeed, getSeasonAwards, isSeasonComplete };
+
+export type AcademyViewRow = {
+  driverId: string;
+  name: string;
+  age: number;
+  nationality: string;
+  potential: number;
+  readiness: number;
+  overall: number;
+};
+
+export function getAcademyView(save: SaveData): AcademyViewRow[] {
+  const prospects = save.season.academy?.prospects ?? [];
+  return [...prospects]
+    .sort((a, b) => b.readiness - a.readiness)
+    .map((p) => ({
+      driverId: p.driverId,
+      name: p.name,
+      age: p.age,
+      nationality: p.nationality,
+      potential: p.potential,
+      readiness: p.readiness,
+      overall: p.profile.overall,
     }));
 }

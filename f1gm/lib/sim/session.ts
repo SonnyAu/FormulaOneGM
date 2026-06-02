@@ -1,7 +1,12 @@
+import { getLikelyRetirements, getSeasonAwards, isSeasonComplete } from "@/lib/sim/awards";
 import { createNewSave } from "@/lib/sim/factory";
 import { finalizeRaceWeekend, runSimulationTick } from "@/lib/sim/engine";
+import { getNewsFeed } from "@/lib/sim/news";
+import { startNextSeason } from "@/lib/sim/seasonRollover";
 import {
+  AcademyViewRow,
   CalendarRow,
+  getAcademyView,
   getCalendarView,
   getDashboardSummary,
   getRaceResultsView,
@@ -14,7 +19,16 @@ import {
 import { advancePhase, advanceRace, applyPlayerDecision, autoFinishRace } from "@/lib/sim/raceweekend/raceWeekendEngine";
 import { RaceWeekendState, StrategyDecision } from "@/lib/sim/raceweekend/raceTypes";
 import { deleteSave, listSaveMetadata, readSave, upsertImportedSave, writeSave } from "@/lib/storage/saveRepository";
-import { CreateSaveInput, DashboardSummary, GameActionResult, SaveData, SaveMetadata, TeamDecision, WeekendPlan } from "@/types/sim";
+import {
+  CreateSaveInput,
+  DashboardSummary,
+  GameActionResult,
+  SaveData,
+  SaveMetadata,
+  SeasonAwards,
+  TeamDecision,
+  WeekendPlan,
+} from "@/types/sim";
 
 const AUTOSAVE_DELAY_MS = 600;
 
@@ -202,10 +216,48 @@ class SimulationSessionService {
   }
 
   /** Finalize the weekend: write results into the season, advance week/round. */
-  async completeRaceWeekend(): Promise<GameActionResult<DashboardSummary>> {
+  async completeRaceWeekend(): Promise<GameActionResult<{ summary: DashboardSummary; seasonComplete: boolean }>> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
     const { save } = finalizeRaceWeekend(this.activeSave);
     this.activeSave = save;
+    const persisted = await this.persistActiveSave();
+    if (!persisted.ok) return persisted;
+    const dashboard = this.getDashboard();
+    if (!dashboard.ok) return dashboard;
+    return { ok: true, data: { summary: dashboard.data, seasonComplete: isSeasonComplete(save) } };
+  }
+
+  isSeasonComplete(): GameActionResult<boolean> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: isSeasonComplete(this.activeSave) };
+  }
+
+  getSeasonAwards(): GameActionResult<SeasonAwards> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getSeasonAwards(this.activeSave) };
+  }
+
+  getLikelyRetirements(): GameActionResult<ReturnType<typeof getLikelyRetirements>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getLikelyRetirements(this.activeSave) };
+  }
+
+  getNewsFeed(limit = 50): GameActionResult<ReturnType<typeof getNewsFeed>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getNewsFeed(this.activeSave, limit) };
+  }
+
+  getAcademy(): GameActionResult<AcademyViewRow[]> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getAcademyView(this.activeSave) };
+  }
+
+  async startNextSeason(): Promise<GameActionResult<DashboardSummary>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    if (!isSeasonComplete(this.activeSave)) {
+      return { ok: false, error: "Season is not complete yet." };
+    }
+    this.activeSave = startNextSeason(this.activeSave);
     const persisted = await this.persistActiveSave();
     if (!persisted.ok) return persisted;
     return this.getDashboard();

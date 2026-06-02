@@ -84,8 +84,13 @@ function RaceWeekendContent({ saveId }: { saveId: string | null }) {
 
   const finishWeekend = useCallback(async () => {
     setBusy(true);
-    await simulationSession.completeRaceWeekend();
+    const result = await simulationSession.completeRaceWeekend();
     setBusy(false);
+    if (!result.ok) return;
+    if (result.data.seasonComplete) {
+      router.push(`/season-review?saveId=${saveId}`);
+      return;
+    }
     router.push(`/dashboard?saveId=${saveId}`);
   }, [router, saveId]);
 

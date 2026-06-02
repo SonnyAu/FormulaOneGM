@@ -1,5 +1,6 @@
 import { processDevelopment } from "@/lib/sim/subsystems/development";
 import { aiWeekendPlan, defaultWeekendPlan, recommendWeekendPlan, weekendPlanToDecision } from "@/lib/sim/subsystems/weekendPlan";
+import { buildRaceHeadlines } from "@/lib/sim/news";
 import { applyRaceWeekendResult, createRaceWeekendFromSeason } from "@/lib/sim/raceweekend/adapter";
 import { EventLogEntry, SaveData, SaveDifficulty, SeasonState, SimulationDelta, TeamDecision, TeamState, WeekendPlan } from "@/types/sim";
 
@@ -161,6 +162,7 @@ export function finalizeRaceWeekend(save: SaveData): { save: SaveData; delta: Si
     season.raceHistory.push(raceResult);
     season.currentRound += 1;
     events.push(event("race", `Race weekend completed: ${weekend.raceName}.`, season.currentWeek, season.tick));
+    events.push(...buildRaceHeadlines(season, raceResult, weekend, next.meta.playerTeamId));
   }
 
   events.push(...applyWeekendDevelopment(season, next.meta.playerTeamId, next.meta.difficulty));
