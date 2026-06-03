@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { GameUpdateBanner } from "@/components/system/GameUpdateBanner";
+import { getBuildInfo } from "@/lib/buildInfo";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -22,12 +24,15 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const currentBuild = getBuildInfo();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        <GameUpdateBanner currentBuild={currentBuild} />
       </body>
     </html>
   );
