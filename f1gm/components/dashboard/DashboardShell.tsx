@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { PlayDropdown } from "@/components/dashboard/PlayDropdown";
 
 type DashboardShellProps = {
   title: string;
@@ -21,9 +24,7 @@ export function DashboardShell({ title, subtitle, sidebar, children }: Dashboard
               ☰
             </button>
             <p className="font-semibold text-zinc-100">🏁 FormulaOneGM</p>
-            <button type="button" className="ui-interactive rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">
-              Play ▾
-            </button>
+            <PlayDropdown />
             <span className="hidden text-sm text-zinc-300 md:block">{subtitle}</span>
           </div>
 

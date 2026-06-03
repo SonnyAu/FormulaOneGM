@@ -79,7 +79,7 @@ function buildPeakProfile(driverId: string, name: string, potential: number): Dr
 }
 
 export function generateAcademyProspect(seasonYear: number): AcademyProspect {
-  const driverId = uniqueId("academy");
+  const driverId = uniqueId(`academy-${seasonYear}`);
   const name = `${randomItem(FIRST_NAMES)} ${randomItem(LAST_NAMES)}`;
   const age = 17 + Math.floor(Math.random() * 4);
   const potential = clamp(72 + Math.floor(Math.random() * 18), 72, 90);

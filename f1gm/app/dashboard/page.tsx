@@ -191,7 +191,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
 function DashboardWithSaveId() {
   const searchParams = useSearchParams();
   const saveId = searchParams.get("saveId");
-  return <DashboardPageContent key={saveId ?? ""} saveId={saveId} />;
+  return <DashboardPageContent key={searchParams.toString()} saveId={saveId} />;
 }
 
 export default function DashboardPage() {

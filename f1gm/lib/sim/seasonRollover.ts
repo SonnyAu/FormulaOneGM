@@ -9,7 +9,6 @@ import { applyDriverCareerTick, shouldRetire } from "@/lib/sim/driverCareer";
 import { buildRetirementHeadline } from "@/lib/sim/news";
 import { activeDriversForTeam } from "@/lib/sim/roster";
 import {
-  EventLogEntry,
   HistoricalArchiveRecord,
   SaveData,
   TeamSnapshot,

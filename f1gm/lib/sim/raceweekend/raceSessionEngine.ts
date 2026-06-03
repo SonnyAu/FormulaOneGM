@@ -12,6 +12,10 @@ import { chance, gaussian, pick, rangeInt } from "@/lib/sim/raceweekend/rng";
 import { evaluateStrategy } from "@/lib/sim/raceweekend/strategyAI";
 import { eventToCommentary } from "@/lib/sim/raceweekend/commentaryEngine";
 
+export type RaceAdvanceOptions = {
+  engineerForPlayer?: boolean;
+};
+
 const SAFETY_CAR_LAP_PENALTY = 1.45;
 const DRS_RANGE_SECONDS = 1.0;
 const INCIDENT_LOCATIONS = [
@@ -96,7 +100,13 @@ function lastPitLap(state: RaceSessionState, driverId: string): number {
  * threading the supplied serializable rng. Player decisions must already be applied to
  * driver.pendingPitCompound / driver.paceMode before calling.
  */
-export function advanceRaceLap(state: RaceSessionState, entries: RaceEntry[], track: TrackProfile, rng: RngState): void {
+export function advanceRaceLap(
+  state: RaceSessionState,
+  entries: RaceEntry[],
+  track: TrackProfile,
+  rng: RngState,
+  options: RaceAdvanceOptions = {},
+): void {
   if (state.finished) return;
 
   const byId = new Map(entries.map((entry) => [entry.driverId, entry]));
@@ -126,7 +136,7 @@ export function advanceRaceLap(state: RaceSessionState, entries: RaceEntry[], tr
   // --- AI strategy decisions ---
   for (const driver of state.drivers) {
     const entry = byId.get(driver.driverId);
-    if (!entry || entry.isPlayer || driver.dnf) continue;
+    if (!entry || driver.dnf || (entry.isPlayer && !options.engineerForPlayer)) continue;
     const result = evaluateStrategy({ state, driver, entry, track, rng });
     if (!result) continue;
     if (result.pit && result.nextCompound) driver.pendingPitCompound = result.nextCompound;
@@ -371,8 +381,9 @@ export function advanceRaceLaps(
   track: TrackProfile,
   rng: RngState,
   laps: number,
+  options: RaceAdvanceOptions = {},
 ): void {
   for (let i = 0; i < laps && !state.finished; i += 1) {
-    advanceRaceLap(state, entries, track, rng);
+    advanceRaceLap(state, entries, track, rng, options);
   }
 }

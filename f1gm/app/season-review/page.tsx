@@ -37,12 +37,16 @@ function SeasonReviewBody({ saveId }: { saveId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const a = simulationSession.getSeasonAwards();
-    const r = simulationSession.getLikelyRetirements();
-    const s = simulationSession.getStandings();
-    if (a.ok) setAwards(a.data);
-    if (r.ok) setRetirements(r.data);
-    if (s.ok) setStandings(s.data);
+    const timer = window.setTimeout(() => {
+      const a = simulationSession.getSeasonAwards();
+      const r = simulationSession.getLikelyRetirements();
+      const s = simulationSession.getStandings();
+      if (a.ok) setAwards(a.data);
+      if (r.ok) setRetirements(r.data);
+      if (s.ok) setStandings(s.data);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   const onStartNextSeason = useCallback(async () => {

@@ -11,7 +11,7 @@ import { resolveTrackProfile } from "@/lib/sim/raceweekend/trackProfiles";
 import { createRng } from "@/lib/sim/raceweekend/rng";
 import { runPractice } from "@/lib/sim/raceweekend/practiceSessionEngine";
 import { runQualifying } from "@/lib/sim/raceweekend/qualifyingSessionEngine";
-import { advanceRaceLap, advanceRaceLaps, initializeRaceState } from "@/lib/sim/raceweekend/raceSessionEngine";
+import { advanceRaceLap, advanceRaceLaps, initializeRaceState, type RaceAdvanceOptions } from "@/lib/sim/raceweekend/raceSessionEngine";
 
 const POINTS_SCALE = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 const FASTEST_LAP_BONUS = 1;
@@ -84,12 +84,12 @@ export function advancePhase(weekend: RaceWeekendState): RaceWeekendState {
 }
 
 /** Tick the race by one lap. No-op unless in the race phase. */
-export function advanceRace(weekend: RaceWeekendState, laps = 1): RaceWeekendState {
+export function advanceRace(weekend: RaceWeekendState, laps = 1, options: RaceAdvanceOptions = {}): RaceWeekendState {
   if (weekend.phase !== "race" || !weekend.race) return weekend;
   if (laps <= 1) {
-    advanceRaceLap(weekend.race, weekend.entries, weekend.track, weekend.rng);
+    advanceRaceLap(weekend.race, weekend.entries, weekend.track, weekend.rng, options);
   } else {
-    advanceRaceLaps(weekend.race, weekend.entries, weekend.track, weekend.rng, laps);
+    advanceRaceLaps(weekend.race, weekend.entries, weekend.track, weekend.rng, laps, options);
   }
   if (weekend.race.finished && !weekend.result) {
     weekend.result = buildResult(weekend);
@@ -145,13 +145,13 @@ function buildResult(weekend: RaceWeekendState): RaceWeekendResult {
 }
 
 /** Auto-play through any remaining phases and the race to completion (used by skip / demo / quick-sim). */
-export function autoFinishRace(weekend: RaceWeekendState): RaceWeekendState {
+export function autoFinishRace(weekend: RaceWeekendState, options: RaceAdvanceOptions = {}): RaceWeekendState {
   while (weekend.phase === "practice" || weekend.phase === "qualifying") {
     advancePhase(weekend);
   }
   if (weekend.phase !== "race" || !weekend.race) return weekend;
   while (!weekend.race.finished) {
-    advanceRaceLap(weekend.race, weekend.entries, weekend.track, weekend.rng);
+    advanceRaceLap(weekend.race, weekend.entries, weekend.track, weekend.rng, options);
   }
   weekend.result = buildResult(weekend);
   weekend.phase = "complete";

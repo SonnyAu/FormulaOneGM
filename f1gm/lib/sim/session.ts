@@ -31,6 +31,24 @@ import {
 } from "@/types/sim";
 
 const AUTOSAVE_DELAY_MS = 600;
+const SUMMER_BREAK_COMPLETED_ROUND = 13;
+const PLAY_THROUGH_SAFETY_LIMIT = 200;
+
+export type PlayThroughMode = "one-race" | "three-races" | "summer-break" | "season";
+
+export type PlayThroughAvailability = {
+  canPlay: boolean;
+  canPlayToSummerBreak: boolean;
+  racesCompleted: number;
+  racesRemaining: number;
+  seasonComplete: boolean;
+};
+
+export type PlayThroughResult = {
+  summary: DashboardSummary;
+  seasonComplete: boolean;
+  racesCompleted: number;
+};
 
 class SimulationSessionService {
   private activeSave: SaveData | null = null;
@@ -54,6 +72,54 @@ class SimulationSessionService {
       void this.persistActiveSave();
       this.autosaveTimer = null;
     }, AUTOSAVE_DELAY_MS) as unknown as number;
+  }
+
+  private clearAutosaveTimer() {
+    if (typeof window === "undefined") return;
+    if (this.autosaveTimer !== null) {
+      window.clearTimeout(this.autosaveTimer);
+      this.autosaveTimer = null;
+    }
+  }
+
+  private totalRaceCount(): number {
+    return this.activeSave?.season.calendar.filter((entry) => entry.type === "race").length ?? 0;
+  }
+
+  private completedRaceCount(): number {
+    return this.activeSave?.season.raceHistory.length ?? 0;
+  }
+
+  private playerPendingDecisions(): TeamDecision[] {
+    if (!this.activeSave) return [];
+    const playerTeamId = this.activeSave.meta.playerTeamId;
+    return this.activeSave.season.pendingDecisions.filter((decision) => decision.teamId === playerTeamId);
+  }
+
+  private ensureEngineerWeekendPlan() {
+    if (!this.activeSave || this.activeSave.season.pendingWeekendPlan) return;
+    const recommendation = getWeekendPlanRecommendation(this.activeSave);
+    if (!recommendation) return;
+    this.activeSave.season.pendingWeekendPlan = { ...recommendation.plan, autoManaged: true };
+  }
+
+  private playThroughTarget(mode: PlayThroughMode): GameActionResult<number> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+
+    const completed = this.completedRaceCount();
+    const total = this.totalRaceCount();
+    if (total === 0) return { ok: false, error: "No races are available on this calendar." };
+    if (completed >= total) return { ok: false, error: "Season is already complete." };
+
+    if (mode === "one-race") return { ok: true, data: Math.min(total, completed + 1) };
+    if (mode === "three-races") return { ok: true, data: Math.min(total, completed + 3) };
+    if (mode === "season") return { ok: true, data: total };
+
+    if (completed >= SUMMER_BREAK_COMPLETED_ROUND || this.activeSave.season.currentRound > SUMMER_BREAK_COMPLETED_ROUND) {
+      return { ok: false, error: "Summer break has already passed." };
+    }
+
+    return { ok: true, data: Math.min(total, SUMMER_BREAK_COMPLETED_ROUND) };
   }
 
   /** Flush debounced autosave immediately (e.g. tab backgrounded). */
@@ -152,16 +218,80 @@ class SimulationSessionService {
   async advanceWeek(): Promise<GameActionResult<DashboardSummary>> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
 
-    const playerDecision = this.activeSave.season.pendingDecisions.filter(
-      (decision) => decision.teamId === this.activeSave?.meta.playerTeamId,
-    );
-
-    const { save } = runSimulationTick(this.activeSave, playerDecision);
+    const { save } = runSimulationTick(this.activeSave, this.playerPendingDecisions());
     this.activeSave = save;
     const persisted = await this.persistActiveSave();
     if (!persisted.ok) return persisted;
 
     return this.getDashboard();
+  }
+
+  getPlayThroughAvailability(): GameActionResult<PlayThroughAvailability> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+
+    const completed = this.completedRaceCount();
+    const total = this.totalRaceCount();
+    const seasonComplete = total > 0 && completed >= total;
+
+    return {
+      ok: true,
+      data: {
+        canPlay: total > 0 && !seasonComplete,
+        canPlayToSummerBreak:
+          total > 0 &&
+          !seasonComplete &&
+          completed < SUMMER_BREAK_COMPLETED_ROUND &&
+          this.activeSave.season.currentRound <= SUMMER_BREAK_COMPLETED_ROUND,
+        racesCompleted: completed,
+        racesRemaining: Math.max(0, total - completed),
+        seasonComplete,
+      },
+    };
+  }
+
+  async playThrough(mode: PlayThroughMode): Promise<GameActionResult<PlayThroughResult>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+
+    const target = this.playThroughTarget(mode);
+    if (!target.ok) return target;
+
+    const completedBefore = this.completedRaceCount();
+    this.clearAutosaveTimer();
+
+    let guard = 0;
+    while (this.activeSave && this.completedRaceCount() < target.data) {
+      guard += 1;
+      if (guard > PLAY_THROUGH_SAFETY_LIMIT) {
+        return { ok: false, error: "Fast-sim could not reach the selected target." };
+      }
+
+      const weekend = this.activeSave.season.activeRaceWeekend;
+      if (weekend) {
+        this.ensureEngineerWeekendPlan();
+        autoFinishRace(weekend, { engineerForPlayer: true });
+        const { save } = finalizeRaceWeekend(this.activeSave);
+        this.activeSave = save;
+        continue;
+      }
+
+      const { save } = runSimulationTick(this.activeSave, this.playerPendingDecisions());
+      this.activeSave = save;
+    }
+
+    const persisted = await this.persistActiveSave();
+    if (!persisted.ok) return persisted;
+
+    const dashboard = this.getDashboard();
+    if (!dashboard.ok) return dashboard;
+
+    return {
+      ok: true,
+      data: {
+        summary: dashboard.data,
+        seasonComplete: isSeasonComplete(this.activeSave),
+        racesCompleted: this.completedRaceCount() - completedBefore,
+      },
+    };
   }
 
   async checkpoint(): Promise<GameActionResult<SaveMetadata>> {
