@@ -1,8 +1,10 @@
 import { driverMap } from "@/data/drivers";
 import { teams as teamData } from "@/data/teams";
 import { getLikelyRetirements, getSeasonAwards, isSeasonComplete } from "@/lib/sim/awards";
+import { roundRating } from "@/lib/sim/driverCareer";
 import { getNewsFeed } from "@/lib/sim/news";
-import { driverNameFromRoster } from "@/lib/sim/roster";
+import { getLineupSwapAvailability } from "@/lib/sim/rosterActions";
+import { driverNameFromRoster, raceDriversForTeam, reserveDriverForTeam } from "@/lib/sim/roster";
 import { getEffectiveCarProfile } from "@/lib/sim/raceweekend/adapter";
 import { recommendWeekendPlan } from "@/lib/sim/subsystems/weekendPlan";
 import { CarProfile } from "@/lib/sim/raceweekend/raceTypes";
@@ -18,6 +20,7 @@ import {
   TeamSnapshot,
   TeamUpgradeProject,
   WeekendPlan,
+  DriverSeasonInfo,
 } from "@/types/sim";
 
 export const FULL_HISTORY_DETAIL_LIMIT = 5;
@@ -130,7 +133,7 @@ function buildDriverTeamMap(save: SaveData): Map<string, { abbreviation: string;
   const roster = save.season.roster ?? {};
 
   for (const driver of Object.values(roster)) {
-    if (!driver.active) continue;
+    if (!driver.active || driver.lineupRole !== "race") continue;
     map.set(driver.driverId, {
       abbreviation: save.season.teams[driver.teamId]?.abbreviation ?? "-",
       teamId: driver.teamId,
@@ -538,8 +541,75 @@ export function getAcademyView(save: SaveData): AcademyViewRow[] {
       name: p.name,
       age: p.age,
       nationality: p.nationality,
-      potential: p.potential,
-      readiness: p.readiness,
-      overall: p.profile.overall,
+      potential: roundRating(p.potential),
+      readiness: roundRating(p.readiness),
+      overall: roundRating(p.profile.overall),
     }));
+}
+
+export type RosterDriverRow = {
+  driverId: string;
+  name: string;
+  age: number;
+  nationality: string;
+  lineupRole: "race" | "reserve";
+  overall: number;
+  qualifying: number;
+  racePace: number;
+  consistency: number;
+  championshipPoints: number;
+  wins: number;
+  podiums: number;
+  fromAcademy: boolean;
+  canSwapWithReserve?: boolean;
+};
+
+export type RosterView = {
+  raceDrivers: RosterDriverRow[];
+  reserve: RosterDriverRow | null;
+  academy: AcademyViewRow[];
+  swapAllowed: boolean;
+  swapBlockedReason?: string;
+};
+
+function toRosterDriverRow(
+  save: SaveData,
+  driver: DriverSeasonInfo,
+  options?: { canSwap?: boolean },
+): RosterDriverRow {
+  const info = driverMap.get(driver.driverId);
+  const entry = save.season.driverStandings[driver.driverId];
+  return {
+    driverId: driver.driverId,
+    name: driver.name,
+    age: driver.age,
+    nationality: info?.nationality ?? "—",
+    lineupRole: driver.lineupRole,
+    overall: roundRating(driver.profile.overall),
+    qualifying: roundRating(driver.profile.qualifying),
+    racePace: roundRating(driver.profile.racePace),
+    consistency: roundRating(driver.profile.consistency),
+    championshipPoints: entry?.points ?? 0,
+    wins: entry?.wins ?? 0,
+    podiums: entry?.podiums ?? 0,
+    fromAcademy: driver.fromAcademy,
+    canSwapWithReserve: options?.canSwap,
+  };
+}
+
+export function getRosterView(save: SaveData): RosterView {
+  const teamId = save.meta.playerTeamId;
+  const swap = getLineupSwapAvailability(save);
+  const raceDrivers = raceDriversForTeam(save.season.roster, teamId);
+  const reserve = reserveDriverForTeam(save.season.roster, teamId);
+
+  return {
+    raceDrivers: raceDrivers.map((d) =>
+      toRosterDriverRow(save, d, { canSwap: swap.allowed && reserve !== null }),
+    ),
+    reserve: reserve ? toRosterDriverRow(save, reserve) : null,
+    academy: getAcademyView(save),
+    swapAllowed: swap.allowed,
+    swapBlockedReason: swap.reason,
+  };
 }

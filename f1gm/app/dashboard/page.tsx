@@ -5,10 +5,9 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
-import { DriverLineupTable, StandingsTable } from "@/components/dashboard/DashboardTables";
+import { DriverLineupTable, StandingsTable, type DashboardLineupRow } from "@/components/dashboard/DashboardTables";
 import { Headlines, LinkList, RecordPanel } from "@/components/dashboard/DashboardWidgets";
 import { driverMap } from "@/data/drivers";
-import { teams } from "@/data/teams";
 import { simulationSession } from "@/lib/sim/session";
 import { DashboardSummary } from "@/types/sim";
 
@@ -25,10 +24,29 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
   const [raceWeekendActive, setRaceWeekendActive] = useState(false);
   const [seasonComplete, setSeasonComplete] = useState(false);
   const [driverRows, setDriverRows] = useState<{ driverId: string; name: string; teamAbbreviation: string; points: number }[]>([]);
+  const [lineup, setLineup] = useState<DashboardLineupRow[]>([]);
 
   const refreshStandings = () => {
     const result = simulationSession.getStandings();
     setDriverRows(result.ok ? result.data.drivers : []);
+  };
+
+  const refreshLineup = () => {
+    const result = simulationSession.getRoster();
+    if (!result.ok) {
+      setLineup([]);
+      return;
+    }
+    setLineup(
+      result.data.raceDrivers.map((driver, index) => ({
+        driverId: driver.driverId,
+        name: driver.name,
+        number: driverMap.get(driver.driverId)?.number ?? index + 1,
+        nationality: driver.nationality,
+        role: index === 0 ? "Lead" : "Wing",
+        overall: driver.overall,
+      })),
+    );
   };
 
   useEffect(() => {
@@ -52,23 +70,14 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
       const complete = simulationSession.isSeasonComplete();
       setSeasonComplete(complete.ok ? complete.data : false);
       refreshStandings();
+      refreshLineup();
       setSessionError(null);
     };
 
     void bootstrap();
   }, [saveId]);
 
-  const selectedTeam = useMemo(
-    () => teams.find((team) => team.id === summary?.playerTeam.id) ?? null,
-    [summary?.playerTeam],
-  );
-
-  const drivers = useMemo(() => {
-    if (!selectedTeam) return [];
-    return selectedTeam.driverIds
-      .map((driverId) => driverMap.get(driverId))
-      .filter((driver): driver is NonNullable<typeof driver> => driver !== undefined);
-  }, [selectedTeam]);
+  const drivers = lineup;
 
   const constructorStandings = useMemo(
     () =>
@@ -126,6 +135,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
     }
     setSummary(result.data);
     refreshStandings();
+    refreshLineup();
     if (simulationSession.hasActiveRaceWeekend()) {
       router.push(`/race-weekend?saveId=${saveId}`);
       return;
@@ -172,7 +182,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
             footerLink="Full standings"
           />
           <div className="grid gap-3 md:grid-cols-2">
-            <LinkList title="Team Leaders" rows={[{ label: `${drivers[0]?.name ?? "Lead Driver"}  |  best finish`, value: "—" }, { label: `${drivers[1]?.name ?? "Second Driver"}  |  avg quali`, value: "—" }, { label: `${drivers[0]?.name ?? "Lead Driver"}  |  overtakes`, value: "0" }]} footerLink="Full roster" />
+            <LinkList title="Team Leaders" rows={[{ label: `${drivers[0]?.name ?? "Lead Driver"}  |  best finish`, value: "—" }, { label: `${drivers[1]?.name ?? "Second Driver"}  |  avg quali`, value: "—" }, { label: `${drivers[0]?.name ?? "Lead Driver"}  |  overtakes`, value: "0" }]} footerLink="Full roster" footerHref={`/roster?saveId=${saveId}`} />
             <LinkList title="Team Stats" rows={[{ label: "Points", value: String(summary.playerTeam.points) }, { label: "Reliability", value: `${summary.playerTeam.reliability}` }, { label: "Pace", value: `${summary.playerTeam.pace}` }, { label: "Season", value: String(summary.meta.seasonYear) }]} footerLink="Team stats" />
           </div>
           <LinkList title="Finances" rows={[{ label: "Budget", value: money.format(summary.playerTeam.budget) }, { label: "Save Difficulty", value: summary.meta.difficulty }, { label: "Last Played", value: new Date(summary.meta.lastPlayedAt).toLocaleString() }, { label: "Week", value: String(summary.meta.week) }, { label: "Save Name", value: summary.meta.name }]} footerLink="Team finances" />
@@ -183,7 +193,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
           <LinkList title="Recent simulation events" rows={(summary.recentEvents.length ? summary.recentEvents : [{ message: "No events yet" }]).map((entry) => ({ label: entry.message }))} />
         </div>
       </div>
-      <div className="mt-4"><DriverLineupTable drivers={drivers} /></div>
+      <div className="mt-4"><DriverLineupTable drivers={drivers} rosterHref={`/roster?saveId=${saveId}`} /></div>
     </DashboardShell>
   );
 }

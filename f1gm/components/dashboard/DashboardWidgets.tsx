@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { EventLogEntry } from "@/types/sim";
 
 type RecordPanelProps = {
@@ -18,9 +19,10 @@ type LinkListProps = {
   title: string;
   rows: Array<{ label: string; value?: string }>;
   footerLink?: string;
+  footerHref?: string;
 };
 
-export function LinkList({ title, rows, footerLink }: LinkListProps) {
+export function LinkList({ title, rows, footerLink, footerHref }: LinkListProps) {
   return (
     <section className="ui-card rounded border border-zinc-700 bg-[#1b232e] p-4">
       <h3 className="text-4xl font-semibold leading-none">{title}</h3>
@@ -32,7 +34,13 @@ export function LinkList({ title, rows, footerLink }: LinkListProps) {
           </li>
         ))}
       </ul>
-      {footerLink ? <p className="mt-2 text-xs text-amber-400">» {footerLink}</p> : null}
+      {footerLink && footerHref ? (
+        <Link href={footerHref} className="ui-interactive mt-2 inline-block text-xs text-amber-400 hover:text-amber-300">
+          » {footerLink}
+        </Link>
+      ) : footerLink ? (
+        <p className="mt-2 text-xs text-amber-400">» {footerLink}</p>
+      ) : null}
     </section>
   );
 }

@@ -24,7 +24,7 @@ const menuSections: Array<{ label: string; links: MenuLink[] }> = [
   {
     label: "Team",
     links: [
-      { label: "Roster" },
+      { label: "Roster", href: "/roster" },
       { label: "Finances", href: "/finances" },
       { label: "Factory", href: "/factory" },
       { label: "R&D", href: "/rd" },

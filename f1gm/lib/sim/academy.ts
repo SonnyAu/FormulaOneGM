@@ -118,6 +118,8 @@ export function promoteProspectToDriver(
     age: prospect.age,
     active: true,
     fromAcademy: true,
+    lineupRole: "race",
+    raceExperience: 0,
     peakProfile,
     profile,
   };

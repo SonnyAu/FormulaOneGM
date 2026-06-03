@@ -38,9 +38,24 @@ function recomputeOverall(profile: DriverProfile): number {
 }
 
 function lerpTrait(current: number, target: number, delta: number): number {
-  if (current < target) return clamp(current + delta, 40, 99);
-  if (current > target) return clamp(current - delta, 40, 99);
-  return current;
+  if (current < target) return clamp(Math.round(current + delta), 40, 99);
+  if (current > target) return clamp(Math.round(current - delta), 40, 99);
+  return Math.round(current);
+}
+
+function roundProfileTraits(profile: DriverProfile, peak?: DriverProfile): void {
+  for (const key of TRAIT_KEYS) {
+    profile[key] = clamp(Math.round(profile[key]), 40, 99);
+  }
+  profile.overall = recomputeOverall(profile);
+  if (peak) {
+    profile.overall = clamp(profile.overall, 40, peak.overall);
+  }
+}
+
+/** Round a driver rating for display (overall, quali, traits, etc.). */
+export function roundRating(value: number): number {
+  return Math.round(value);
 }
 
 function applyTraitDelta(profile: DriverProfile, peak: DriverProfile, delta: number, towardPeak: boolean): void {
@@ -48,17 +63,22 @@ function applyTraitDelta(profile: DriverProfile, peak: DriverProfile, delta: num
     const target = peak[key];
     profile[key] = towardPeak ? lerpTrait(profile[key], target, delta) : lerpTrait(profile[key], target - 8, delta);
   }
-  profile.overall = recomputeOverall(profile);
-  profile.overall = clamp(profile.overall, 40, peak.overall);
+  roundProfileTraits(profile, peak);
 }
 
-/** Young drivers improve faster when further below peak. */
+/** Hidden growth multiplier from race seat time (not shown in UI). */
+export function experienceGrowthMultiplier(raceExperience: number): number {
+  return 1 + Math.min(raceExperience, 24) * 0.04;
+}
+
+/** Young drivers improve faster when further below peak, boosted by hidden seat time. */
 function youngImprovementRate(driver: DriverSeasonInfo): number {
   const gap = driver.peakProfile.overall - driver.profile.overall;
-  if (gap <= 0) return 0.5;
-  if (gap > 12) return 3;
-  if (gap > 6) return 2;
-  return 1;
+  let base = 0.5;
+  if (gap > 12) base = 3;
+  else if (gap > 6) base = 2;
+  else if (gap > 0) base = 1;
+  return base * experienceGrowthMultiplier(driver.raceExperience);
 }
 
 /** Veterans regress faster as they age. */
@@ -89,10 +109,10 @@ export function applyDriverCareerTick(driver: DriverSeasonInfo): void {
     const jitter = primeJitter();
     if (jitter !== 0) {
       for (const key of TRAIT_KEYS) {
-        profile[key] = clamp(profile[key] + jitter, 40, peak[key]);
+        profile[key] = clamp(Math.round(profile[key] + jitter), 40, peak[key]);
       }
     }
-    profile.overall = clamp(recomputeOverall(profile), 40, peak.overall);
+    roundProfileTraits(profile, peak);
     return;
   }
 
@@ -127,6 +147,7 @@ export function initialProfileFromPeak(peak: DriverProfile, age: number): Driver
     }
   }
   profile.overall = recomputeOverall(profile);
+  roundProfileTraits(profile);
   return profile;
 }
 
@@ -134,4 +155,34 @@ export function isLikelyRetirement(driver: DriverSeasonInfo): boolean {
   if (!driver.active || driver.age < AGE_VETERAN_MIN) return false;
   const margin = driver.profile.overall - RETIREMENT_OVERALL_THRESHOLD;
   return margin <= 5;
+}
+
+/** Increment hidden seat time for drivers who raced this weekend. */
+export function recordRaceWeekendSeatTime(
+  roster: Record<string, DriverSeasonInfo>,
+  teamId: string,
+): void {
+  for (const driver of Object.values(roster)) {
+    if (driver.active && driver.teamId === teamId && driver.lineupRole === "race") {
+      driver.raceExperience += 1;
+    }
+  }
+}
+
+/** Small in-season trait bump for young drivers in the race seat (hidden mechanic). */
+export function applyInSeasonRaceSeatGrowth(driver: DriverSeasonInfo): void {
+  if (driver.age > AGE_YOUNG_MAX || driver.lineupRole !== "race" || !driver.active) return;
+  const delta = 0.5 * experienceGrowthMultiplier(driver.raceExperience);
+  applyTraitDelta(driver.profile, driver.peakProfile, delta, true);
+}
+
+export function applyInSeasonGrowthForRaceDrivers(
+  roster: Record<string, DriverSeasonInfo>,
+  teamId: string,
+): void {
+  for (const driver of Object.values(roster)) {
+    if (driver.active && driver.teamId === teamId && driver.lineupRole === "race") {
+      applyInSeasonRaceSeatGrowth(driver);
+    }
+  }
 }

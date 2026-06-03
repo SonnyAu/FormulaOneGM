@@ -1,6 +1,6 @@
 import type { DriverProfile, RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
 
-export const SAVE_SCHEMA_VERSION = 5;
+export const SAVE_SCHEMA_VERSION = 6;
 
 export type SaveDifficulty = "easy" | "standard" | "hard";
 
@@ -146,6 +146,8 @@ export type RaceResult = {
   fastestPitStop?: FastestPitStopRecord;
 };
 
+export type DriverLineupRole = "race" | "reserve";
+
 export type DriverSeasonInfo = {
   driverId: string;
   name: string;
@@ -154,6 +156,9 @@ export type DriverSeasonInfo = {
   age: number;
   active: boolean;
   fromAcademy: boolean;
+  lineupRole: DriverLineupRole;
+  /** Hidden career stat — never exposed in UI selectors. */
+  raceExperience: number;
   peakProfile: DriverProfile;
   profile: DriverProfile;
 };

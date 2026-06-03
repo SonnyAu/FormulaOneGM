@@ -1,4 +1,4 @@
-import { buildDriverSeasonInfo, buildInitialAcademy, buildRosterFromTeams } from "@/lib/sim/roster";
+import { buildDriverSeasonInfo, buildInitialAcademy, buildRosterFromTeams, ensureTeamLineupStructure } from "@/lib/sim/roster";
 import { idbDelete, idbGet, idbGetAll, idbPut } from "@/lib/storage/indexedDb";
 import { SAVE_SCHEMA_VERSION, SaveData, SaveMetadata } from "@/types/sim";
 
@@ -88,6 +88,9 @@ function migrateSaveData(record: SaveRecord): SaveData | null {
   if (save.season.academy === undefined) {
     save.season.academy = buildInitialAcademy(save.season.seasonYear);
   }
+
+  // v6: lineup roles, reserve drivers, hidden race experience.
+  ensureTeamLineupStructure(save.season.roster, Object.keys(save.season.teams), save.season.seasonYear);
 
   return save;
 }

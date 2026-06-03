@@ -11,13 +11,16 @@ import {
   getDashboardSummary,
   getHistoryView,
   getRaceResultsView,
+  getRosterView,
   getStandings,
   getTeamManagement,
   getWeekendPlanRecommendation,
   RaceResultRow,
   TeamManagement,
   type HistoryView,
+  type RosterView,
 } from "@/lib/sim/selectors";
+import { swapDriverWithReserve } from "@/lib/sim/rosterActions";
 import { advancePhase, advanceRace, applyPlayerDecision, autoFinishRace } from "@/lib/sim/raceweekend/raceWeekendEngine";
 import { RaceWeekendState, StrategyDecision } from "@/lib/sim/raceweekend/raceTypes";
 import { deleteSave, listSaveMetadata, readSave, upsertImportedSave, writeSave } from "@/lib/storage/saveRepository";
@@ -387,6 +390,23 @@ class SimulationSessionService {
   getAcademy(): GameActionResult<AcademyViewRow[]> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
     return { ok: true, data: getAcademyView(this.activeSave) };
+  }
+
+  getRoster(): GameActionResult<RosterView> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getRosterView(this.activeSave) };
+  }
+
+  async swapWithReserve(raceDriverId: string): Promise<GameActionResult<RosterView>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+
+    const result = swapDriverWithReserve(this.activeSave, this.activeSave.meta.playerTeamId, raceDriverId);
+    if ("error" in result) return { ok: false, error: result.error };
+
+    this.activeSave = result.save;
+    const persisted = await this.persistActiveSave();
+    if (!persisted.ok) return persisted;
+    return { ok: true, data: getRosterView(this.activeSave) };
   }
 
   async startNextSeason(): Promise<GameActionResult<DashboardSummary>> {

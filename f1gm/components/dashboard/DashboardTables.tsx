@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { Driver } from "@/types/f1";
 
 export type ConstructorStanding = {
   pos: number;
@@ -14,6 +14,15 @@ export type DriverStanding = {
   name: string;
   team: string;
   pts: number;
+};
+
+export type DashboardLineupRow = {
+  driverId: string;
+  name: string;
+  number: number;
+  nationality: string;
+  role: string;
+  overall: number;
 };
 
 type StandingsTableProps = {
@@ -161,10 +170,11 @@ export function StandingsTable({
 }
 
 type DriverLineupTableProps = {
-  drivers: Driver[];
+  drivers: DashboardLineupRow[];
+  rosterHref?: string;
 };
 
-export function DriverLineupTable({ drivers }: DriverLineupTableProps) {
+export function DriverLineupTable({ drivers, rosterHref }: DriverLineupTableProps) {
   return (
     <section className="ui-card rounded border border-zinc-700 bg-[#1b232e] p-4">
       <h3 className="text-3xl font-semibold">Starting Lineup</h3>
@@ -175,30 +185,34 @@ export function DriverLineupTable({ drivers }: DriverLineupTableProps) {
             <th className="pb-1">Name</th>
             <th className="pb-1">Role</th>
             <th className="pb-1">Nationality</th>
-            <th className="pb-1 text-right">Contract</th>
+            <th className="pb-1 text-right">Overall</th>
           </tr>
         </thead>
         <tbody>
-          {drivers.map((driver, idx) => (
-            <tr key={driver.id} className="text-zinc-300">
+          {drivers.map((driver) => (
+            <tr key={driver.driverId} className="text-zinc-300">
               <td className="border-t border-zinc-800 py-1.5">
                 #{driver.number}
               </td>
               <td className="border-t border-zinc-800 py-1.5">{driver.name}</td>
-              <td className="border-t border-zinc-800 py-1.5">
-                {idx === 0 ? "Lead" : "Wing"}
-              </td>
+              <td className="border-t border-zinc-800 py-1.5">{driver.role}</td>
               <td className="border-t border-zinc-800 py-1.5">
                 {driver.nationality}
               </td>
               <td className="border-t border-zinc-800 py-1.5 text-right">
-                {idx === 0 ? "to 2028" : "to 2027"}
+                {driver.overall}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="mt-1 text-xs text-amber-400">» Full roster</p>
+      {rosterHref ? (
+        <Link href={rosterHref} className="ui-interactive mt-1 inline-block text-xs text-amber-400 hover:text-amber-300">
+          » Full roster
+        </Link>
+      ) : (
+        <p className="mt-1 text-xs text-amber-400">» Full roster</p>
+      )}
     </section>
   );
 }

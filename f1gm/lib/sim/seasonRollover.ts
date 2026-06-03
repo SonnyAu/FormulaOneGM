@@ -7,7 +7,7 @@ import {
 } from "@/lib/sim/academy";
 import { applyDriverCareerTick, shouldRetire } from "@/lib/sim/driverCareer";
 import { buildRetirementHeadline } from "@/lib/sim/news";
-import { activeDriversForTeam } from "@/lib/sim/roster";
+import { activeDriversForTeam, generateReserveDriver, reserveDriverForTeam } from "@/lib/sim/roster";
 import {
   HistoricalArchiveRecord,
   SaveData,
@@ -81,6 +81,13 @@ export function startNextSeason(save: SaveData): SaveData {
     }
   }
   archiveRecord.retirements = retirements;
+
+  for (const teamId of Object.keys(season.teams)) {
+    if (!reserveDriverForTeam(season.roster, teamId)) {
+      const generated = generateReserveDriver(teamId, newYear);
+      season.roster[generated.driverId] = generated;
+    }
+  }
 
   const teamsNeedingDrivers = new Set<string>();
   for (const teamId of Object.keys(season.teams)) {
