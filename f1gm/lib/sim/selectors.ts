@@ -6,7 +6,21 @@ import { driverNameFromRoster } from "@/lib/sim/roster";
 import { getEffectiveCarProfile } from "@/lib/sim/raceweekend/adapter";
 import { recommendWeekendPlan } from "@/lib/sim/subsystems/weekendPlan";
 import { CarProfile } from "@/lib/sim/raceweekend/raceTypes";
-import { CalendarEvent, DashboardSummary, SaveData, SaveDifficulty, TeamUpgradeProject, WeekendPlan } from "@/types/sim";
+import {
+  CalendarEvent,
+  DashboardSummary,
+  HistoricalArchiveRecord,
+  RaceResult,
+  SaveData,
+  SaveDifficulty,
+  SeasonAwards,
+  SeasonChampions,
+  TeamSnapshot,
+  TeamUpgradeProject,
+  WeekendPlan,
+} from "@/types/sim";
+
+export const FULL_HISTORY_DETAIL_LIMIT = 5;
 
 export function getDashboardSummary(save: SaveData): DashboardSummary {
   const playerTeam = save.season.teams[save.meta.playerTeamId];
@@ -189,11 +203,10 @@ export type RaceResultRow = {
   driverFinishingOrder: RaceResultDriverRow[] | null;
 };
 
-export function getRaceResultsView(save: SaveData): RaceResultRow[] {
+function buildRaceResultRows(save: SaveData, raceResults: RaceResult[]): RaceResultRow[] {
   const abbreviation = (teamId: string) => save.season.teams[teamId]?.abbreviation ?? teamId;
-  const driverTeam = buildDriverTeamMap(save);
 
-  return [...save.season.raceHistory]
+  return [...raceResults]
     .sort((a, b) => b.round - a.round)
     .map((result) => ({
       round: result.round,
@@ -203,7 +216,7 @@ export function getRaceResultsView(save: SaveData): RaceResultRow[] {
         ? [...result.driverResults]
             .sort((a, b) => (a.dnf === b.dnf ? a.position - b.position : a.dnf ? 1 : -1))
             .map((row) => {
-              const abbr = driverTeam.get(row.driverId)?.abbreviation ?? abbreviation(row.teamId);
+              const abbr = abbreviation(row.teamId);
               return {
                 driverId: row.driverId,
                 name: driverDisplayName(save, row.driverId, abbr),
@@ -216,6 +229,292 @@ export function getRaceResultsView(save: SaveData): RaceResultRow[] {
             })
         : null,
     }));
+}
+
+export function getRaceResultsView(save: SaveData): RaceResultRow[] {
+  return buildRaceResultRows(save, save.season.raceHistory);
+}
+
+type ArchiveLikeRecord = {
+  seasonYear: number;
+  champions: SeasonChampions;
+  awards: SeasonAwards;
+  retirements: HistoricalArchiveRecord["retirements"];
+  raceResults: RaceResult[];
+  teamSnapshots: TeamSnapshot[];
+  isCurrentSeason: boolean;
+};
+
+export type HistoryTeamSnapshotRow = TeamSnapshot & {
+  name: string;
+  abbreviation: string;
+};
+
+export type HistoryRaceParticipantRow = {
+  kind: "driver" | "team";
+  driverId?: string;
+  teamId: string;
+  name: string;
+  teamAbbreviation: string;
+  position: number;
+  points: number;
+  dnf: boolean;
+  hasFastestLap: boolean;
+  isPlayerEntry: boolean;
+};
+
+export type HistoryRacePodiumRow = {
+  round: number;
+  raceName: string;
+  podium: HistoryRaceParticipantRow[];
+  playerResults: HistoryRaceParticipantRow[];
+  hasDriverResults: boolean;
+};
+
+export type HistorySeasonRow = {
+  seasonYear: number;
+  champions: SeasonChampions;
+  awards: SeasonAwards;
+  retirements: HistoricalArchiveRecord["retirements"];
+  canViewFullDetails: boolean;
+  isCurrentSeason: boolean;
+  driverStandings: DriverStandingRow[] | null;
+  constructorStandings: ConstructorStandingRow[] | null;
+  racePodiums: HistoryRacePodiumRow[] | null;
+  teamSnapshots: HistoryTeamSnapshotRow[] | null;
+};
+
+export type HistoryView = {
+  seasons: HistorySeasonRow[];
+  fullDetailLimit: number;
+};
+
+function teamName(save: SaveData, teamId: string): string {
+  return save.season.teams[teamId]?.name ?? teamData.find((team) => team.id === teamId)?.entrant ?? teamId;
+}
+
+function teamAbbreviation(save: SaveData, teamId: string): string {
+  return save.season.teams[teamId]?.abbreviation ?? teamData.find((team) => team.id === teamId)?.abbreviation ?? teamId;
+}
+
+function teamSnapshotsFromSave(save: SaveData): HistoryTeamSnapshotRow[] {
+  return Object.values(save.season.teams)
+    .map((team) => ({
+      teamId: team.id,
+      seasonYear: save.season.seasonYear,
+      week: save.season.currentWeek,
+      budget: team.budget,
+      carPace: team.car.pace,
+      reliability: team.car.reliability,
+      points: team.standings.points,
+      name: team.name,
+      abbreviation: team.abbreviation,
+    }))
+    .sort((a, b) => b.points - a.points);
+}
+
+function decorateTeamSnapshots(save: SaveData, snapshots: TeamSnapshot[]): HistoryTeamSnapshotRow[] {
+  return [...snapshots]
+    .map((snapshot) => ({
+      ...snapshot,
+      name: teamName(save, snapshot.teamId),
+      abbreviation: teamAbbreviation(save, snapshot.teamId),
+    }))
+    .sort((a, b) => b.points - a.points);
+}
+
+function buildHistoryRacePodiums(save: SaveData, raceResults: RaceResult[]): HistoryRacePodiumRow[] {
+  const playerTeamId = save.meta.playerTeamId;
+
+  return [...raceResults]
+    .sort((a, b) => a.round - b.round)
+    .map((race) => {
+      if (race.driverResults?.length) {
+        const toDriverRow = (row: NonNullable<RaceResult["driverResults"]>[number]): HistoryRaceParticipantRow => {
+          const abbreviation = teamAbbreviation(save, row.teamId);
+          return {
+            kind: "driver",
+            driverId: row.driverId,
+            teamId: row.teamId,
+            name: driverDisplayName(save, row.driverId, abbreviation),
+            teamAbbreviation: abbreviation,
+            position: row.position,
+            points: row.points,
+            dnf: row.dnf,
+            hasFastestLap: row.hasFastestLap,
+            isPlayerEntry: row.teamId === playerTeamId,
+          };
+        };
+
+        const podium = [...race.driverResults]
+          .filter((row) => !row.dnf)
+          .sort((a, b) => a.position - b.position)
+          .slice(0, 3)
+          .map(toDriverRow);
+        const podiumDriverIds = new Set(podium.map((row) => row.driverId).filter((driverId): driverId is string => Boolean(driverId)));
+
+        return {
+          round: race.round,
+          raceName: race.raceName,
+          podium,
+          playerResults: [...race.driverResults]
+            .filter((row) => row.teamId === playerTeamId && !podiumDriverIds.has(row.driverId))
+            .sort((a, b) => (a.dnf === b.dnf ? a.position - b.position : a.dnf ? 1 : -1))
+            .map(toDriverRow),
+          hasDriverResults: true,
+        };
+      }
+
+      return {
+        round: race.round,
+        raceName: race.raceName,
+        podium: race.finishingOrder
+          .filter((row) => !row.dnf)
+          .slice(0, 3)
+          .map<HistoryRaceParticipantRow>((row, index) => ({
+            kind: "team",
+            teamId: row.teamId,
+            name: teamName(save, row.teamId),
+            teamAbbreviation: teamAbbreviation(save, row.teamId),
+            position: index + 1,
+            points: row.points,
+            dnf: row.dnf,
+            hasFastestLap: false,
+            isPlayerEntry: row.teamId === playerTeamId,
+          })),
+        playerResults: [],
+        hasDriverResults: false,
+      };
+    });
+}
+
+function archivedDriverStandings(save: SaveData, raceResults: RaceResult[]): DriverStandingRow[] | null {
+  const standings = new Map<string, { driverId: string; teamId: string; points: number; wins: number; podiums: number }>();
+  let hasDriverResults = false;
+
+  for (const race of raceResults) {
+    for (const row of race.driverResults ?? []) {
+      hasDriverResults = true;
+      const entry = standings.get(row.driverId) ?? { driverId: row.driverId, teamId: row.teamId, points: 0, wins: 0, podiums: 0 };
+      entry.teamId = row.teamId;
+      entry.points += row.points;
+      if (!row.dnf && row.position === 1) entry.wins += 1;
+      if (!row.dnf && row.position <= 3) entry.podiums += 1;
+      standings.set(row.driverId, entry);
+    }
+  }
+
+  if (!hasDriverResults) return null;
+
+  return [...standings.values()]
+    .map((entry) => {
+      const abbreviation = teamAbbreviation(save, entry.teamId);
+      return {
+        driverId: entry.driverId,
+        name: driverDisplayName(save, entry.driverId, abbreviation),
+        teamAbbreviation: abbreviation,
+        points: entry.points,
+        wins: entry.wins,
+        podiums: entry.podiums,
+      };
+    })
+    .sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name));
+}
+
+function archivedConstructorStandings(save: SaveData, raceResults: RaceResult[], snapshots: TeamSnapshot[]): ConstructorStandingRow[] | null {
+  const standings = new Map<string, { teamId: string; points: number; wins: number; podiums: number }>();
+
+  for (const race of raceResults) {
+    race.finishingOrder.forEach((row, index) => {
+      const entry = standings.get(row.teamId) ?? { teamId: row.teamId, points: 0, wins: 0, podiums: 0 };
+      entry.points += row.points;
+      if (!row.dnf && index === 0) entry.wins += 1;
+      if (!row.dnf && index <= 2) entry.podiums += 1;
+      standings.set(row.teamId, entry);
+    });
+  }
+
+  if (standings.size === 0) {
+    for (const snapshot of snapshots) {
+      standings.set(snapshot.teamId, { teamId: snapshot.teamId, points: snapshot.points, wins: 0, podiums: 0 });
+    }
+  }
+
+  if (standings.size === 0) return null;
+
+  return [...standings.values()]
+    .map((entry) => ({
+      teamId: entry.teamId,
+      abbreviation: teamAbbreviation(save, entry.teamId),
+      name: teamName(save, entry.teamId),
+      points: entry.points,
+      wins: entry.wins,
+      podiums: entry.podiums,
+    }))
+    .sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name));
+}
+
+function currentSeasonHistoryRecord(save: SaveData): ArchiveLikeRecord | null {
+  if (!isSeasonComplete(save)) return null;
+  const awards = getSeasonAwards(save);
+  return {
+    seasonYear: save.season.seasonYear,
+    champions: { wdc: awards.wdc, wcc: awards.wcc },
+    awards,
+    retirements: [],
+    raceResults: save.season.raceHistory,
+    teamSnapshots: teamSnapshotsFromSave(save),
+    isCurrentSeason: true,
+  };
+}
+
+function archivedSeasonHistoryRecord(record: HistoricalArchiveRecord): ArchiveLikeRecord {
+  return {
+    seasonYear: record.seasonYear,
+    champions: record.champions,
+    awards: record.awards,
+    retirements: record.retirements ?? [],
+    raceResults: record.raceResults ?? [],
+    teamSnapshots: record.teamSnapshots ?? [],
+    isCurrentSeason: false,
+  };
+}
+
+export function getHistoryView(save: SaveData): HistoryView {
+  const records = save.season.archive.map(archivedSeasonHistoryRecord);
+  const current = currentSeasonHistoryRecord(save);
+  if (current) records.push(current);
+
+  const sortedRecords = records.sort((a, b) => b.seasonYear - a.seasonYear);
+
+  return {
+    fullDetailLimit: FULL_HISTORY_DETAIL_LIMIT,
+    seasons: sortedRecords.map((record, index) => {
+      const canViewFullDetails = index < FULL_HISTORY_DETAIL_LIMIT && (record.raceResults.length > 0 || record.teamSnapshots.length > 0);
+      const racePodiums = canViewFullDetails ? buildHistoryRacePodiums(save, record.raceResults) : null;
+      const teamSnapshots = canViewFullDetails ? decorateTeamSnapshots(save, record.teamSnapshots) : null;
+      return {
+        seasonYear: record.seasonYear,
+        champions: record.champions,
+        awards: record.awards,
+        retirements: record.retirements,
+        canViewFullDetails,
+        isCurrentSeason: record.isCurrentSeason,
+        driverStandings: canViewFullDetails
+          ? record.isCurrentSeason
+            ? getStandings(save).drivers
+            : archivedDriverStandings(save, record.raceResults)
+          : null,
+        constructorStandings: canViewFullDetails
+          ? record.isCurrentSeason
+            ? getStandings(save).constructors
+            : archivedConstructorStandings(save, record.raceResults, record.teamSnapshots)
+          : null,
+        racePodiums,
+        teamSnapshots,
+      };
+    }),
+  };
 }
 
 export { getLikelyRetirements, getNewsFeed, getSeasonAwards, isSeasonComplete };

@@ -9,12 +9,14 @@ import {
   getAcademyView,
   getCalendarView,
   getDashboardSummary,
+  getHistoryView,
   getRaceResultsView,
   getStandings,
   getTeamManagement,
   getWeekendPlanRecommendation,
   RaceResultRow,
   TeamManagement,
+  type HistoryView,
 } from "@/lib/sim/selectors";
 import { advancePhase, advanceRace, applyPlayerDecision, autoFinishRace } from "@/lib/sim/raceweekend/raceWeekendEngine";
 import { RaceWeekendState, StrategyDecision } from "@/lib/sim/raceweekend/raceTypes";
@@ -196,6 +198,11 @@ class SimulationSessionService {
   getRaceResults(): GameActionResult<RaceResultRow[]> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
     return { ok: true, data: getRaceResultsView(this.activeSave) };
+  }
+
+  getHistory(): GameActionResult<HistoryView> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getHistoryView(this.activeSave) };
   }
 
   submitPlayerDecision(decision: Omit<TeamDecision, "week" | "tick" | "source">): GameActionResult<void> {

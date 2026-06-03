@@ -16,6 +16,7 @@ const menuSections: Array<{ label: string; links: MenuLink[] }> = [
       { label: "Calendar", href: "/calendar" },
       { label: "Race Weekend", href: "/race-weekend" },
       { label: "Results", href: "/results" },
+      { label: "History", href: "/history" },
       { label: "Regulations" },
       { label: "News Feed", href: "/news" },
     ],

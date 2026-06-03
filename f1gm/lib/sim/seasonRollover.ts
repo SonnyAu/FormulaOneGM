@@ -14,6 +14,8 @@ import {
   TeamSnapshot,
 } from "@/types/sim";
 
+const FULL_ARCHIVE_LIMIT = 5;
+
 function teamSnapshotsFromSeason(save: SaveData): TeamSnapshot[] {
   return Object.values(save.season.teams).map((team) => ({
     teamId: team.id,
@@ -24,6 +26,21 @@ function teamSnapshotsFromSeason(save: SaveData): TeamSnapshot[] {
     reliability: team.car.reliability,
     points: team.standings.points,
   }));
+}
+
+function pruneFullArchiveDetails(archive: HistoricalArchiveRecord[]) {
+  const fullDetailYears = new Set(
+    [...archive]
+      .sort((a, b) => b.seasonYear - a.seasonYear)
+      .slice(0, FULL_ARCHIVE_LIMIT)
+      .map((record) => record.seasonYear),
+  );
+
+  for (const record of archive) {
+    if (fullDetailYears.has(record.seasonYear)) continue;
+    record.raceResults = [];
+    record.teamSnapshots = [];
+  }
 }
 
 export function startNextSeason(save: SaveData): SaveData {
@@ -43,6 +60,7 @@ export function startNextSeason(save: SaveData): SaveData {
   };
 
   season.archive.push(archiveRecord);
+  pruneFullArchiveDetails(season.archive);
 
   const newYear = season.seasonYear + 1;
   season.seasonYear = newYear;
