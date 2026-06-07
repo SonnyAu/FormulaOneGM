@@ -28,6 +28,7 @@ import {
   CreateSaveInput,
   DashboardSummary,
   GameActionResult,
+  RaceResult,
   SaveData,
   SaveMetadata,
   SeasonAwards,
@@ -53,6 +54,23 @@ export type PlayThroughResult = {
   summary: DashboardSummary;
   seasonComplete: boolean;
   racesCompleted: number;
+};
+
+export type PlayThroughPlan = {
+  mode: PlayThroughMode;
+  startRaceCount: number;
+  targetRaceCount: number;
+  totalRaceCount: number;
+};
+
+export type PlayThroughStepResult = {
+  summary: DashboardSummary;
+  seasonComplete: boolean;
+  planComplete: boolean;
+  racesCompleted: number;
+  targetRaceCount: number;
+  totalRaceCount: number;
+  raceResult?: RaceResult;
 };
 
 class SimulationSessionService {
@@ -259,20 +277,59 @@ class SimulationSessionService {
     };
   }
 
-  async playThrough(mode: PlayThroughMode): Promise<GameActionResult<PlayThroughResult>> {
+  createPlayThroughPlan(mode: PlayThroughMode): GameActionResult<PlayThroughPlan> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
 
     const target = this.playThroughTarget(mode);
     if (!target.ok) return target;
 
+    return {
+      ok: true,
+      data: {
+        mode,
+        startRaceCount: this.completedRaceCount(),
+        targetRaceCount: target.data,
+        totalRaceCount: this.totalRaceCount(),
+      },
+    };
+  }
+
+  private buildCompletedPlayThroughStep(plan: PlayThroughPlan): GameActionResult<PlayThroughStepResult> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const dashboard = this.getDashboard();
+    if (!dashboard.ok) return dashboard;
+
+    return {
+      ok: true,
+      data: {
+        summary: dashboard.data,
+        seasonComplete: isSeasonComplete(this.activeSave),
+        planComplete: true,
+        racesCompleted: Math.max(0, this.completedRaceCount() - plan.startRaceCount),
+        targetRaceCount: plan.targetRaceCount,
+        totalRaceCount: this.totalRaceCount(),
+      },
+    };
+  }
+
+  async playThroughStep(plan: PlayThroughPlan): Promise<GameActionResult<PlayThroughStepResult>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+
+    const total = this.totalRaceCount();
+    if (total === 0) return { ok: false, error: "No races are available on this calendar." };
+
     const completedBefore = this.completedRaceCount();
+    if (completedBefore >= plan.targetRaceCount || completedBefore >= total) {
+      return this.buildCompletedPlayThroughStep(plan);
+    }
+
     this.clearAutosaveTimer();
 
     let guard = 0;
-    while (this.activeSave && this.completedRaceCount() < target.data) {
+    while (this.activeSave && this.completedRaceCount() === completedBefore && this.completedRaceCount() < plan.targetRaceCount) {
       guard += 1;
       if (guard > PLAY_THROUGH_SAFETY_LIMIT) {
-        return { ok: false, error: "Fast-sim could not reach the selected target." };
+        return { ok: false, error: "Fast-sim could not reach the next race weekend." };
       }
 
       const weekend = this.activeSave.season.activeRaceWeekend;
@@ -288,6 +345,15 @@ class SimulationSessionService {
       this.activeSave = save;
     }
 
+    const completedAfter = this.completedRaceCount();
+    const completedThisStep = completedAfter - completedBefore;
+    if (completedThisStep > 1) {
+      return { ok: false, error: "Fast-sim completed more than one race weekend in a single step." };
+    }
+    if (completedThisStep < 1) {
+      return { ok: false, error: "Fast-sim could not complete the next race weekend." };
+    }
+
     const persisted = await this.persistActiveSave();
     if (!persisted.ok) return persisted;
 
@@ -299,7 +365,28 @@ class SimulationSessionService {
       data: {
         summary: dashboard.data,
         seasonComplete: isSeasonComplete(this.activeSave),
-        racesCompleted: this.completedRaceCount() - completedBefore,
+        planComplete: completedAfter >= plan.targetRaceCount || isSeasonComplete(this.activeSave),
+        racesCompleted: Math.max(0, completedAfter - plan.startRaceCount),
+        targetRaceCount: plan.targetRaceCount,
+        totalRaceCount: this.totalRaceCount(),
+        raceResult: this.activeSave.season.raceHistory[completedAfter - 1],
+      },
+    };
+  }
+
+  async playThrough(mode: PlayThroughMode): Promise<GameActionResult<PlayThroughResult>> {
+    const plan = this.createPlayThroughPlan(mode);
+    if (!plan.ok) return plan;
+
+    const step = await this.playThroughStep(plan.data);
+    if (!step.ok) return step;
+
+    return {
+      ok: true,
+      data: {
+        summary: step.data.summary,
+        seasonComplete: step.data.seasonComplete,
+        racesCompleted: step.data.racesCompleted,
       },
     };
   }
