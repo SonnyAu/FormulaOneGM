@@ -3,6 +3,16 @@ import { teams as teamData } from "@/data/teams";
 import { getLikelyRetirements, getSeasonAwards, isSeasonComplete } from "@/lib/sim/awards";
 import { roundRating } from "@/lib/sim/driverCareer";
 import { getNewsFeed } from "@/lib/sim/news";
+import {
+  activePowerUnitContract,
+  availableCustomerSlots,
+  calculatePowerUnitFinancials,
+  customerContractsForManufacturer,
+  isWorksTeamId,
+  powerUnitMarketForTeam,
+  POWER_UNIT_DEVELOPMENT_COST,
+  worksManufacturerForTeam,
+} from "@/lib/sim/powerUnits";
 import { getLineupSwapAvailability } from "@/lib/sim/rosterActions";
 import { driverNameFromRoster, raceDriversForTeam, reserveDriverForTeam } from "@/lib/sim/roster";
 import { getEffectiveCarProfile } from "@/lib/sim/raceweekend/adapter";
@@ -22,6 +32,11 @@ import {
   TeamUpgradeProject,
   WeekendPlan,
   DriverSeasonInfo,
+  PowerUnitContract,
+  PowerUnitDevelopmentProgram,
+  PowerUnitFinancials,
+  PowerUnitManufacturerId,
+  PowerUnitRatings,
 } from "@/types/sim";
 
 export const FULL_HISTORY_DETAIL_LIMIT = 5;
@@ -73,6 +88,7 @@ export type TeamManagement = {
   rd: { aero: number; power: number; mechanical: number; reliability: number };
   queue: TeamUpgradeProject[];
   effectiveCar: CarProfile;
+  powerUnitFinancials: PowerUnitFinancials;
   pendingPlan: WeekendPlan | null;
   nextRace: CalendarEvent | null;
 };
@@ -98,9 +114,159 @@ export function getTeamManagement(save: SaveData): TeamManagement | null {
     car: team.car,
     rd: { aero: team.rd.aero, power: team.rd.power, mechanical: team.rd.mechanical, reliability: team.rd.reliability },
     queue: team.rd.queue,
-    effectiveCar: getEffectiveCarProfile(team),
+    effectiveCar: getEffectiveCarProfile(team, save.season),
+    powerUnitFinancials: calculatePowerUnitFinancials(save.season, team.id),
     pendingPlan: save.season.pendingWeekendPlan ?? null,
     nextRace,
+  };
+}
+
+export type PowerUnitMarketRow = {
+  manufacturerId: PowerUnitManufacturerId;
+  name: string;
+  engineName: string;
+  ratings: PowerUnitRatings;
+  annualPrice: number;
+  weeklyPrice: number;
+  customerCount: number;
+  customerCapacity: number;
+  availableSlots: number;
+  eligible: boolean;
+  canSign: boolean;
+  isCurrentSupplier: boolean;
+  blockedReason: string | null;
+};
+
+export type PowerUnitManagement = {
+  teamId: string;
+  teamName: string;
+  teamType: "works" | "customer";
+  seasonYear: number;
+  seasonComplete: boolean;
+  budget: number;
+  isWorksTeam: boolean;
+  currentContract: PowerUnitContract | null;
+  currentManufacturer: {
+    id: PowerUnitManufacturerId;
+    name: string;
+    engineName: string;
+    ratings: PowerUnitRatings;
+  } | null;
+  futureContract: PowerUnitContract | null;
+  financials: PowerUnitFinancials;
+  yearsRemaining: number;
+  adaptationActive: boolean;
+  market: PowerUnitMarketRow[];
+  works: {
+    manufacturerId: PowerUnitManufacturerId;
+    name: string;
+    engineName: string;
+    ratings: PowerUnitRatings;
+    customerCapacity: number;
+    customerCount: number;
+    availableSlots: number;
+    customers: Array<{
+      teamId: string;
+      name: string;
+      abbreviation: string;
+      annualPrice: number;
+      endSeason: number;
+    }>;
+    pendingProgram: PowerUnitDevelopmentProgram | null;
+    developmentCosts: typeof POWER_UNIT_DEVELOPMENT_COST;
+  } | null;
+};
+
+export function getPowerUnitManagement(save: SaveData): PowerUnitManagement | null {
+  const team = save.season.teams[save.meta.playerTeamId];
+  if (!team) return null;
+
+  const season = save.season;
+  const currentContract = activePowerUnitContract(season, team.id);
+  const currentPowerUnit = currentContract ? season.powerUnits[currentContract.manufacturerId] : null;
+  const futureContract =
+    [...(season.powerUnitContracts ?? [])]
+      .filter((contract) => contract.teamId === team.id && contract.startSeason > season.seasonYear)
+      .sort((a, b) => a.startSeason - b.startSeason)[0] ?? null;
+  const seasonComplete = isSeasonComplete(save);
+  const contractExpired = currentContract ? currentContract.endSeason <= season.seasonYear : true;
+  const playerIsWorksTeam = isWorksTeamId(team.id);
+
+  const market: PowerUnitMarketRow[] = powerUnitMarketForTeam(season, team.id).map((row) => {
+    let blockedReason: string | null = null;
+    if (playerIsWorksTeam) blockedReason = "Factory teams keep their works PU.";
+    else if (!row.eligible) blockedReason = "Supplier is not eligible for this team.";
+    else if (!contractExpired) blockedReason = `Current contract runs through ${currentContract?.endSeason}.`;
+    else if (futureContract) blockedReason = `Future contract already signed for ${futureContract.startSeason}.`;
+    else if (!row.canSupply) blockedReason = "Supplier is at customer capacity.";
+    else if (!seasonComplete) blockedReason = "Contracts open after the season review.";
+
+    return {
+      manufacturerId: row.manufacturerId,
+      name: row.manufacturer.name,
+      engineName: row.manufacturer.engineName,
+      ratings: row.manufacturer.ratings,
+      annualPrice: row.annualPrice,
+      weeklyPrice: Math.round(row.annualPrice / Math.max(1, season.calendar.length || 50)),
+      customerCount: row.customerCount,
+      customerCapacity: row.manufacturer.customerCapacity,
+      availableSlots: row.availableSlots,
+      eligible: row.eligible,
+      canSign: blockedReason === null,
+      isCurrentSupplier: row.isCurrentSupplier,
+      blockedReason,
+    };
+  });
+
+  const worksManufacturerId = worksManufacturerForTeam(team.id);
+  const worksManufacturer = worksManufacturerId ? season.powerUnits[worksManufacturerId] : null;
+  const customerContracts = worksManufacturerId ? customerContractsForManufacturer(season, worksManufacturerId) : [];
+  const works = worksManufacturerId && worksManufacturer
+    ? {
+        manufacturerId: worksManufacturerId,
+        name: worksManufacturer.name,
+        engineName: worksManufacturer.engineName,
+        ratings: worksManufacturer.ratings,
+        customerCapacity: worksManufacturer.customerCapacity,
+        customerCount: customerContracts.length,
+        availableSlots: availableCustomerSlots(season, worksManufacturerId),
+        customers: customerContracts.map((contract) => ({
+          teamId: contract.teamId,
+          name: season.teams[contract.teamId]?.name ?? contract.teamId,
+          abbreviation: season.teams[contract.teamId]?.abbreviation ?? contract.teamId,
+          annualPrice: contract.annualPrice,
+          endSeason: contract.endSeason,
+        })),
+        pendingProgram: worksManufacturer.pendingDevelopmentProgram ?? null,
+        developmentCosts: POWER_UNIT_DEVELOPMENT_COST,
+      }
+    : null;
+
+  return {
+    teamId: team.id,
+    teamName: team.name,
+    teamType: team.teamType,
+    seasonYear: season.seasonYear,
+    seasonComplete,
+    budget: team.budget,
+    isWorksTeam: playerIsWorksTeam,
+    currentContract,
+    currentManufacturer: currentPowerUnit
+      ? {
+          id: currentPowerUnit.id,
+          name: currentPowerUnit.name,
+          engineName: currentPowerUnit.engineName,
+          ratings: currentPowerUnit.ratings,
+        }
+      : null,
+    futureContract,
+    financials: calculatePowerUnitFinancials(season, team.id),
+    yearsRemaining: currentContract ? Math.max(0, currentContract.endSeason - season.seasonYear + 1) : 0,
+    adaptationActive:
+      currentContract?.adaptationPenaltyUntilSeason !== undefined &&
+      currentContract.adaptationPenaltyUntilSeason >= season.seasonYear,
+    market,
+    works,
   };
 }
 

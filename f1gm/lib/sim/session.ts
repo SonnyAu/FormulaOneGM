@@ -12,6 +12,7 @@ import {
   getDashboardSummary,
   getHistoryView,
   getLatestConstructorDevelopmentReports,
+  getPowerUnitManagement,
   getRaceResultsView,
   getRosterView,
   getStandings,
@@ -20,8 +21,13 @@ import {
   RaceResultRow,
   TeamManagement,
   type HistoryView,
+  type PowerUnitManagement,
   type RosterView,
 } from "@/lib/sim/selectors";
+import {
+  commitPowerUnitDevelopmentProgram as setPowerUnitDevelopmentProgram,
+  signPlayerPowerUnitContract as signPowerUnitContract,
+} from "@/lib/sim/powerUnits";
 import { swapDriverWithReserve } from "@/lib/sim/rosterActions";
 import { advancePhase, advanceRace, applyPlayerDecision, autoFinishRace } from "@/lib/sim/raceweekend/raceWeekendEngine";
 import { RaceWeekendState, StrategyDecision } from "@/lib/sim/raceweekend/raceTypes";
@@ -34,6 +40,8 @@ import {
   SaveData,
   SaveMetadata,
   OwnerConfidenceReview,
+  PowerUnitDevelopmentProgram,
+  PowerUnitManufacturerId,
   SeasonAwards,
   ConstructorDevelopmentReport,
   TeamDecision,
@@ -195,6 +203,31 @@ class SimulationSessionService {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
     const data = getTeamManagement(this.activeSave);
     return data ? { ok: true, data } : { ok: false, error: "Player team not found." };
+  }
+
+  getPowerUnitManagement(): GameActionResult<PowerUnitManagement> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const data = getPowerUnitManagement(this.activeSave);
+    return data ? { ok: true, data } : { ok: false, error: "Player team not found." };
+  }
+
+  commitPowerUnitDevelopmentProgram(program: PowerUnitDevelopmentProgram): GameActionResult<void> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const result = setPowerUnitDevelopmentProgram(this.activeSave, this.activeSave.meta.playerTeamId, program);
+    if (!result.ok) return result;
+    this.queueAutosave();
+    return { ok: true, data: undefined };
+  }
+
+  signPlayerPowerUnitContract(manufacturerId: PowerUnitManufacturerId, lengthYears: number): GameActionResult<void> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    if (!isSeasonComplete(this.activeSave)) {
+      return { ok: false, error: "Power unit contracts can only be signed after the season review." };
+    }
+    const result = signPowerUnitContract(this.activeSave, this.activeSave.meta.playerTeamId, manufacturerId, lengthYears);
+    if (!result.ok) return result;
+    this.queueAutosave();
+    return { ok: true, data: undefined };
   }
 
   getWeekendPlanRecommendation(): GameActionResult<{ plan: WeekendPlan; rationale: string }> {

@@ -1,6 +1,6 @@
 import type { DriverProfile, RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
 
-export const SAVE_SCHEMA_VERSION = 9;
+export const SAVE_SCHEMA_VERSION = 10;
 
 export type SaveDifficulty = "easy" | "standard" | "hard";
 
@@ -34,6 +34,54 @@ export type CalendarEvent = {
 };
 
 export type TeamType = "works" | "customer";
+
+export type PowerUnitManufacturerId = "mercedes" | "ferrari" | "honda" | "audi" | "red-bull-ford";
+
+export type PowerUnitRatings = {
+  ice: number;
+  ers: number;
+  reliability: number;
+  integration: number;
+  overall: number;
+};
+
+export type PowerUnitDevelopmentProgram = {
+  level: "none" | "standard" | "aggressive";
+  focus: "ice" | "ers" | "reliability" | "balanced";
+};
+
+export type PowerUnitManufacturerState = {
+  id: PowerUnitManufacturerId;
+  name: string;
+  engineName: string;
+  worksTeamId: string;
+  customerCapacity: number;
+  exclusiveTeamIds?: string[];
+  ratings: PowerUnitRatings;
+  pendingDevelopmentProgram?: PowerUnitDevelopmentProgram | null;
+};
+
+export type PowerUnitContract = {
+  id: string;
+  teamId: string;
+  manufacturerId: PowerUnitManufacturerId;
+  startSeason: number;
+  endSeason: number;
+  annualPrice: number;
+  isWorksSupply: boolean;
+  signedSeason: number;
+  adaptationPenaltyUntilSeason?: number;
+  installationCost?: number;
+  isFiaAssigned?: boolean;
+};
+
+export type PowerUnitFinancials = {
+  annualCost: number;
+  annualRevenue: number;
+  weeklyCost: number;
+  weeklyRevenue: number;
+  weeklyNet: number;
+};
 
 export type OwnerRiskTier = "secure" | "watched" | "at-risk" | "final-warning";
 
@@ -332,6 +380,8 @@ export type SeasonState = {
   roster: Record<string, DriverSeasonInfo>;
   academy: AcademyState;
   jobSecurity: JobSecurityState;
+  powerUnits: Record<PowerUnitManufacturerId, PowerUnitManufacturerState>;
+  powerUnitContracts: PowerUnitContract[];
 };
 
 export type SaveData = {

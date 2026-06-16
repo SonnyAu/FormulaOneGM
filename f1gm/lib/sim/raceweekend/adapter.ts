@@ -2,6 +2,7 @@ import { teams as teamData } from "@/data/teams";
 import { driverMap } from "@/data/drivers";
 import { getDriverProfile } from "@/data/driverProfiles";
 import { carProfiles, getCarProfile } from "@/data/carProfiles";
+import { applyPowerUnitPerformance } from "@/lib/sim/powerUnits";
 import { activeDriversForTeam } from "@/lib/sim/roster";
 import { createRaceWeekend } from "@/lib/sim/raceweekend/raceWeekendEngine";
 import { CarProfile, RaceEntry, RaceWeekendResult, RaceWeekendState, StrategyPersonality } from "@/lib/sim/raceweekend/raceTypes";
@@ -59,13 +60,14 @@ function driverIdsForTeam(season: SeasonState, teamId: string): string[] {
  * The CarProfile actually used in races: the tuned static profile for known teams nudged by
  * season development, or the live-derived profile for unknown teams (e.g. custom player).
  */
-export function getEffectiveCarProfile(teamState: TeamState): CarProfile {
+export function getEffectiveCarProfile(teamState: TeamState, season?: SeasonState): CarProfile {
   const baseCar = getCarProfile(teamState.id, teamState.car);
-  return carProfiles[teamState.id] ? developCar(baseCar, teamState.car) : baseCar;
+  const developedCar = carProfiles[teamState.id] ? developCar(baseCar, teamState.car) : baseCar;
+  return applyPowerUnitPerformance(developedCar, season, teamState.id);
 }
 
 function buildEntry(season: SeasonState, teamState: TeamState, driverId: string, isPlayer: boolean): RaceEntry {
-  const car = getEffectiveCarProfile(teamState);
+  const car = getEffectiveCarProfile(teamState, season);
   const rosterDriver = season.roster?.[driverId];
   const driverInfo = driverMap.get(driverId);
   const driver =

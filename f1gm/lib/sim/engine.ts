@@ -2,6 +2,7 @@ import { processDevelopment } from "@/lib/sim/subsystems/development";
 import { aiWeekendPlan, defaultWeekendPlan, recommendWeekendPlan, weekendPlanToDecision } from "@/lib/sim/subsystems/weekendPlan";
 import { applyInSeasonGrowthForRaceDrivers, recordRaceWeekendSeatTime } from "@/lib/sim/driverCareer";
 import { buildRaceHeadlines } from "@/lib/sim/news";
+import { applyPowerUnitWeeklyEconomy } from "@/lib/sim/powerUnits";
 import { applyRaceWeekendResult, createRaceWeekendFromSeason } from "@/lib/sim/raceweekend/adapter";
 import { EventLogEntry, SaveData, SaveDifficulty, SeasonState, SimulationDelta, TeamDecision, TeamState, WeekendPlan } from "@/types/sim";
 
@@ -118,6 +119,7 @@ export function runSimulationTick(save: SaveData, playerDecisions: TeamDecision[
   for (const team of Object.values(season.teams)) {
     season.teams[team.id] = applyPassiveWeeklyEconomy(team);
   }
+  applyPowerUnitWeeklyEconomy(season);
 
   const calendarEvent = season.calendar.find((entry) => entry.week === season.currentWeek) ?? null;
 

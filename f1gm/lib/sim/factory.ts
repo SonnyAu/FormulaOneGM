@@ -1,5 +1,6 @@
 import { teams } from "@/data/teams";
 import { createInitialJobSecurityState } from "@/lib/sim/ownerConfidence";
+import { buildInitialPowerUnitState, isWorksTeamId } from "@/lib/sim/powerUnits";
 import { buildInitialAcademy, buildRosterFromTeams } from "@/lib/sim/roster";
 import { TeamSelection } from "@/types/f1";
 import {
@@ -111,7 +112,7 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
       team.id,
       team.entrant,
       team.abbreviation,
-      team.constructor.includes("-") ? "customer" : "works",
+      isWorksTeamId(team.id) ? "works" : "customer",
     ),
   );
 
@@ -131,6 +132,7 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
   }
 
   const teamsById = Object.fromEntries(gameTeams.map((team) => [team.id, team]));
+  const powerUnitState = buildInitialPowerUnitState(Object.keys(teamsById), seasonYear);
 
   const customDrivers =
     selection.mode === "custom"
@@ -180,6 +182,8 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
     roster,
     academy,
     jobSecurity: createInitialJobSecurityState(playerTeamId),
+    powerUnits: powerUnitState.powerUnits,
+    powerUnitContracts: powerUnitState.powerUnitContracts,
     eventLog: [
       {
         id: `${id}-start`,

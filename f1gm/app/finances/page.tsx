@@ -24,17 +24,31 @@ function FinancesBody() {
 
   if (!data) return <p className="text-zinc-400">Loading finances…</p>;
 
-  const weeklyNet = data.weeklyIncome + data.sponsors.basePayout - data.weeklyCosts;
+  const weeklyNet = data.weeklyIncome + data.sponsors.basePayout - data.weeklyCosts + data.powerUnitFinancials.weeklyNet;
 
   return (
     <div className="space-y-4">
       <section className="ui-card rounded border border-zinc-700 bg-[#1b232e] p-4">
         <h3 className="mb-3 text-lg font-semibold">Overview</h3>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Stat label="Budget" value={money.format(data.budget)} tone={data.budget > 0 ? "good" : "bad"} />
           <Stat label="Weekly income" value={money.format(data.weeklyIncome)} />
           <Stat label="Weekly costs" value={money.format(data.weeklyCosts)} />
+          <Stat
+            label="PU weekly net"
+            value={money.format(data.powerUnitFinancials.weeklyNet)}
+            tone={data.powerUnitFinancials.weeklyNet >= 0 ? "good" : "bad"}
+          />
           <Stat label="Weekly net" value={money.format(weeklyNet)} tone={weeklyNet >= 0 ? "good" : "bad"} />
+        </div>
+      </section>
+
+      <section className="ui-card rounded border border-zinc-700 bg-[#1b232e] p-4">
+        <h3 className="mb-3 text-lg font-semibold">Power Unit</h3>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Stat label="Annual PU cost" value={money.format(data.powerUnitFinancials.annualCost)} />
+          <Stat label="Annual PU revenue" value={money.format(data.powerUnitFinancials.annualRevenue)} tone={data.powerUnitFinancials.annualRevenue > 0 ? "good" : undefined} />
+          <Stat label="Weekly PU revenue" value={money.format(data.powerUnitFinancials.weeklyRevenue)} />
         </div>
       </section>
 

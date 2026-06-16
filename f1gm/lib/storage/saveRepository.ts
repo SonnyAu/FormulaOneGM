@@ -1,5 +1,6 @@
 import { buildDriverSeasonInfo, buildInitialAcademy, buildRosterFromTeams, ensureTeamLineupStructure } from "@/lib/sim/roster";
 import { ensureJobSecurityState } from "@/lib/sim/ownerConfidence";
+import { ensurePowerUnitState } from "@/lib/sim/powerUnits";
 import type { DriverRaceState, RaceClassificationRow, RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
 import { idbDelete, idbGet, idbGetAll, idbPut } from "@/lib/storage/indexedDb";
 import { DriverRaceResult, SAVE_SCHEMA_VERSION, SaveData, SaveMetadata } from "@/types/sim";
@@ -147,6 +148,9 @@ function migrateSaveData(record: SaveRecord): SaveData | null {
   // v9: interactive race penalties/issues persisted into active weekends and race history.
   ensureWeekendIncidentFields(save.season.activeRaceWeekend);
   ensureRaceResultIncidentFields(save);
+
+  // v10: persistent power unit manufacturers, contracts, and works/customer classification.
+  ensurePowerUnitState(save);
 
   return save;
 }
