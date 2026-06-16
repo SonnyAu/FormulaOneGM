@@ -15,11 +15,12 @@ export function PlayDropdown() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const saveId = searchParams.get("saveId") ?? simulationSession.getActiveSaveMeta()?.id ?? null;
+  const simRun = searchParams.get("simRun");
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<PlayThroughAvailability | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const runCounterRef = useRef(0);
 
   const refreshAvailability = useCallback(() => {
     const result = simulationSession.getPlayThroughAvailability();
@@ -42,7 +43,7 @@ export function PlayDropdown() {
     return () => document.removeEventListener("mousedown", closeOnOutsideClick);
   }, [open]);
 
-  const canPlay = Boolean(saveId) && Boolean(availability?.canPlay) && !busy;
+  const canPlay = Boolean(saveId) && Boolean(availability?.canPlay) && !simRun;
 
   const onToggle = () => {
     refreshAvailability();
@@ -50,32 +51,14 @@ export function PlayDropdown() {
     setOpen((value) => !value);
   };
 
-  const onPlayThrough = async (mode: PlayThroughMode) => {
+  const onPlayThrough = (mode: PlayThroughMode) => {
     if (!saveId) return;
 
-    setBusy(true);
     setOpen(false);
     setError(null);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-
-    const result = await simulationSession.playThrough(mode);
-    setBusy(false);
-    refreshAvailability();
-
-    if (!result.ok) {
-      setError(result.error);
-      setOpen(true);
-      return;
-    }
-
-    const activeSaveId = result.data.summary.meta.id;
-    if (result.data.seasonComplete) {
-      router.push(`/season-review?saveId=${activeSaveId}`);
-      return;
-    }
-
-    const refreshKey = `${result.data.summary.meta.week}-${result.data.summary.playerTeam.points}-${result.data.racesCompleted}`;
-    router.push(`/dashboard?saveId=${activeSaveId}&play=${encodeURIComponent(refreshKey)}`);
+    runCounterRef.current += 1;
+    const runId = `${mode}-${availability?.racesCompleted ?? 0}-${runCounterRef.current}`;
+    router.push(`/dashboard?saveId=${saveId}&simMode=${mode}&simRun=${encodeURIComponent(runId)}`);
   };
 
   return (
@@ -88,7 +71,7 @@ export function PlayDropdown() {
         aria-haspopup="menu"
         className="ui-interactive rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        Play ▾
+        {simRun ? "Simulating..." : "Play v"}
       </button>
 
       {open ? (
@@ -98,7 +81,7 @@ export function PlayDropdown() {
         >
           {playOptions.map((option) => {
             const disabled =
-              busy ||
+              Boolean(simRun) ||
               !availability?.canPlay ||
               (option.mode === "summer-break" && !availability.canPlayToSummerBreak);
 
@@ -108,7 +91,7 @@ export function PlayDropdown() {
                 type="button"
                 role="menuitem"
                 disabled={disabled}
-                onClick={() => void onPlayThrough(option.mode)}
+                onClick={() => onPlayThrough(option.mode)}
                 className="ui-interactive block w-full px-3 py-2 text-left text-xs font-medium text-zinc-100 hover:bg-zinc-700/70 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
               >
                 {option.label}

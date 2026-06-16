@@ -1,23 +1,52 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { DriverLineupTable, StandingsTable, type DashboardLineupRow } from "@/components/dashboard/DashboardTables";
 import { Headlines, LinkList, RecordPanel } from "@/components/dashboard/DashboardWidgets";
 import { driverMap } from "@/data/drivers";
-import { simulationSession } from "@/lib/sim/session";
+import { simulationSession, type PlayThroughMode, type PlayThroughPlan } from "@/lib/sim/session";
 import { DashboardSummary } from "@/types/sim";
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const SIM_STEP_DELAY_MS = 900;
+
+const SIM_MODE_LABEL: Record<PlayThroughMode, string> = {
+  "one-race": "Sim 1 Race Weekend",
+  "three-races": "Sim 3 Races",
+  "summer-break": "Sim to Summer Break",
+  season: "Sim Season",
+};
+
+function isPlayThroughMode(value: string | null): value is PlayThroughMode {
+  return value === "one-race" || value === "three-races" || value === "summer-break" || value === "season";
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+type VisualSimStatus = "running" | "stopping" | "stopped" | "complete" | "error";
+
+type VisualSimState = {
+  mode: PlayThroughMode;
+  status: VisualSimStatus;
+  completedRaces: number;
+  targetRaces: number;
+  lastRaceName?: string;
+  message: string;
+};
 
 type DashboardPageContentProps = {
   saveId: string | null;
+  simMode: PlayThroughMode | null;
+  simRun: string | null;
 };
 
-function DashboardPageContent({ saveId }: DashboardPageContentProps) {
+function DashboardPageContent({ saveId, simMode, simRun }: DashboardPageContentProps) {
   const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -25,13 +54,17 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
   const [seasonComplete, setSeasonComplete] = useState(false);
   const [driverRows, setDriverRows] = useState<{ driverId: string; name: string; teamAbbreviation: string; points: number }[]>([]);
   const [lineup, setLineup] = useState<DashboardLineupRow[]>([]);
+  const [visualSim, setVisualSim] = useState<VisualSimState | null>(null);
+  const activeSimRunRef = useRef<string | null>(null);
+  const handledSimRunsRef = useRef<Set<string>>(new Set());
+  const stopAfterCurrentRaceRef = useRef(false);
 
-  const refreshStandings = () => {
+  const refreshStandings = useCallback(() => {
     const result = simulationSession.getStandings();
     setDriverRows(result.ok ? result.data.drivers : []);
-  };
+  }, []);
 
-  const refreshLineup = () => {
+  const refreshLineup = useCallback(() => {
     const result = simulationSession.getRoster();
     if (!result.ok) {
       setLineup([]);
@@ -47,7 +80,18 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
         overall: driver.overall,
       })),
     );
-  };
+  }, []);
+
+  const refreshRaceFlags = useCallback(() => {
+    setRaceWeekendActive(simulationSession.hasActiveRaceWeekend());
+    const complete = simulationSession.isSeasonComplete();
+    setSeasonComplete(complete.ok ? complete.data : false);
+  }, []);
+
+  const clearSimQuery = useCallback(() => {
+    if (!saveId) return;
+    router.replace(`/dashboard?saveId=${saveId}`, { scroll: false });
+  }, [router, saveId]);
 
   useEffect(() => {
     if (!saveId) return;
@@ -66,15 +110,20 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
       }
 
       setSummary(dashboard.data);
-      setRaceWeekendActive(simulationSession.hasActiveRaceWeekend());
-      const complete = simulationSession.isSeasonComplete();
-      setSeasonComplete(complete.ok ? complete.data : false);
+      refreshRaceFlags();
       refreshStandings();
       refreshLineup();
       setSessionError(null);
     };
 
     void bootstrap();
+  }, [refreshLineup, refreshRaceFlags, refreshStandings, saveId]);
+
+  useEffect(() => {
+    activeSimRunRef.current = null;
+    handledSimRunsRef.current.clear();
+    stopAfterCurrentRaceRef.current = false;
+    setVisualSim(null);
   }, [saveId]);
 
   const drivers = lineup;
@@ -97,6 +146,108 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
       pts: row.points,
     }));
   }, [driverRows]);
+
+  const runVisualSimulation = useCallback(
+    async (mode: PlayThroughMode, runId: string) => {
+      if (!saveId || activeSimRunRef.current || handledSimRunsRef.current.has(runId)) return;
+
+      handledSimRunsRef.current.add(runId);
+      activeSimRunRef.current = runId;
+      stopAfterCurrentRaceRef.current = false;
+      setSessionError(null);
+
+      const planResult = simulationSession.createPlayThroughPlan(mode);
+      if (!planResult.ok) {
+        setSessionError(planResult.error);
+        setVisualSim(null);
+        activeSimRunRef.current = null;
+        clearSimQuery();
+        return;
+      }
+
+      const plan: PlayThroughPlan = planResult.data;
+      const targetRaces = Math.max(0, plan.targetRaceCount - plan.startRaceCount);
+      let routeToSeasonReview = false;
+
+      setVisualSim({
+        mode,
+        status: "running",
+        completedRaces: 0,
+        targetRaces,
+        message: "Preparing next race weekend...",
+      });
+
+      try {
+        while (true) {
+          if (stopAfterCurrentRaceRef.current) {
+            setVisualSim((current) =>
+              current ? { ...current, status: "stopped", message: "Stopped before starting the next race." } : current,
+            );
+            break;
+          }
+
+          setVisualSim((current) =>
+            current ? { ...current, status: "running", message: "Simulating next race weekend..." } : current,
+          );
+
+          const step = await simulationSession.playThroughStep(plan);
+          if (!step.ok) {
+            setSessionError(step.error);
+            setVisualSim((current) => (current ? { ...current, status: "error", message: step.error } : current));
+            break;
+          }
+
+          const completedRaces = Math.min(targetRaces, step.data.racesCompleted);
+          const latestRace = step.data.raceResult?.raceName;
+
+          setSummary(step.data.summary);
+          refreshStandings();
+          refreshLineup();
+          refreshRaceFlags();
+          setVisualSim({
+            mode,
+            status: step.data.planComplete || step.data.seasonComplete ? "complete" : "running",
+            completedRaces,
+            targetRaces,
+            lastRaceName: latestRace,
+            message: latestRace ? `Completed ${latestRace}.` : "Race weekend completed.",
+          });
+
+          if (step.data.seasonComplete) {
+            routeToSeasonReview = true;
+            await delay(SIM_STEP_DELAY_MS);
+            break;
+          }
+
+          if (step.data.planComplete) {
+            await delay(SIM_STEP_DELAY_MS);
+            break;
+          }
+
+          await delay(SIM_STEP_DELAY_MS);
+          if (stopAfterCurrentRaceRef.current) {
+            setVisualSim((current) =>
+              current ? { ...current, status: "stopped", message: "Stopped after the current race." } : current,
+            );
+            break;
+          }
+        }
+      } finally {
+        activeSimRunRef.current = null;
+        if (routeToSeasonReview) {
+          router.push(`/season-review?saveId=${saveId}`);
+        } else {
+          clearSimQuery();
+        }
+      }
+    },
+    [clearSimQuery, refreshLineup, refreshRaceFlags, refreshStandings, router, saveId],
+  );
+
+  useEffect(() => {
+    if (!summary || !simMode || !simRun) return;
+    void runVisualSimulation(simMode, simRun);
+  }, [runVisualSimulation, simMode, simRun, summary]);
 
   if (!saveId) {
     return (
@@ -145,6 +296,14 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
     setSeasonComplete(complete.ok ? complete.data : false);
   };
 
+  const stopVisualSimulation = () => {
+    stopAfterCurrentRaceRef.current = true;
+    setVisualSim((current) =>
+      current ? { ...current, status: "stopping", message: "Will stop after the current race." } : current,
+    );
+  };
+  const simInProgress = visualSim?.status === "running" || visualSim?.status === "stopping";
+
   return (
     <DashboardShell
       title={`${summary.playerTeam.name} Dashboard`}
@@ -160,7 +319,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
         ) : raceWeekendActive ? (
           <Link href={`/race-weekend?saveId=${saveId}`} className="ui-interactive rounded bg-amber-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400">Resume race weekend →</Link>
         ) : (
-          <button type="button" onClick={onAdvanceWeek} className="ui-interactive rounded bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500">Advance week</button>
+          <button type="button" onClick={onAdvanceWeek} disabled={simInProgress} className="ui-interactive rounded bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60">Advance week</button>
         )}
         <Link href="/" className="ui-interactive rounded border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-zinc-500">Back to saves</Link>
         {sessionError && <p className="text-sm text-red-300">{sessionError}</p>}
@@ -168,6 +327,7 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
           Auto-save: weekly decisions are written to this device after a short delay; advancing the week saves immediately. Switching tabs flushes any pending save.
         </p>
       </div>
+      {visualSim ? <VisualSimPanel state={visualSim} onStop={stopVisualSimulation} /> : null}
       <div className="grid gap-4 xl:grid-cols-[290px_1fr_340px]">
         <StandingsTable constructorStandings={constructorStandings} driverStandings={driverStandings} highlightedTeam={summary.playerTeam.abbreviation} />
 
@@ -198,10 +358,51 @@ function DashboardPageContent({ saveId }: DashboardPageContentProps) {
   );
 }
 
+function VisualSimPanel({ state, onStop }: { state: VisualSimState; onStop: () => void }) {
+  const canStop = state.status === "running";
+  const statusLabel =
+    state.status === "complete"
+      ? "Complete"
+      : state.status === "stopped"
+        ? "Stopped"
+        : state.status === "stopping"
+          ? "Stopping"
+          : state.status === "error"
+            ? "Error"
+            : "Running";
+
+  return (
+    <section className="mb-4 rounded border border-emerald-700/60 bg-emerald-950/25 p-4 text-zinc-100">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">{statusLabel}</p>
+          <h2 className="mt-1 text-lg font-semibold">{SIM_MODE_LABEL[state.mode]}</h2>
+          <p className="mt-1 text-sm text-zinc-300">
+            {state.completedRaces} / {state.targetRaces} race weekend{state.targetRaces === 1 ? "" : "s"} completed.
+            {state.lastRaceName ? ` Latest: ${state.lastRaceName}.` : ""}
+          </p>
+          <p className="mt-1 text-xs text-zinc-400">{state.message}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onStop}
+          disabled={!canStop}
+          className="ui-interactive rounded border border-emerald-500 px-3 py-2 text-xs font-semibold text-emerald-100 hover:bg-emerald-800/40 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Stop after current race
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function DashboardWithSaveId() {
   const searchParams = useSearchParams();
   const saveId = searchParams.get("saveId");
-  return <DashboardPageContent key={searchParams.toString()} saveId={saveId} />;
+  const simModeParam = searchParams.get("simMode");
+  const simMode = isPlayThroughMode(simModeParam) ? simModeParam : null;
+  const simRun = searchParams.get("simRun");
+  return <DashboardPageContent key={saveId ?? ""} saveId={saveId} simMode={simMode} simRun={simRun} />;
 }
 
 export default function DashboardPage() {
