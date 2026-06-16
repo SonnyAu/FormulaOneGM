@@ -1,6 +1,7 @@
 import { driverMap } from "@/data/drivers";
 import { teams as teamData } from "@/data/teams";
 import { getLikelyRetirements, getSeasonAwards, isSeasonComplete } from "@/lib/sim/awards";
+import { calculateDriverContractFinancials } from "@/lib/sim/driverContracts";
 import { roundRating } from "@/lib/sim/driverCareer";
 import { getNewsFeed } from "@/lib/sim/news";
 import {
@@ -37,6 +38,7 @@ import {
   PowerUnitFinancials,
   PowerUnitManufacturerId,
   PowerUnitRatings,
+  SponsorContract,
 } from "@/types/sim";
 
 export const FULL_HISTORY_DETAIL_LIMIT = 5;
@@ -81,7 +83,8 @@ export type TeamManagement = {
   budget: number;
   weeklyIncome: number;
   weeklyCosts: number;
-  sponsors: { titleSponsor: string; confidence: number; basePayout: number };
+  sponsors: { titleSponsor: string; confidence: number; basePayout: number; portfolio: SponsorContract[] };
+  driverFinancials: { annualCost: number; weeklyCost: number };
   facilities: { factory: number; cfd: number; simulator: number };
   staff: { engineering: number; operations: number; aeroLead: number };
   car: { pace: number; efficiency: number; reliability: number };
@@ -109,6 +112,7 @@ export function getTeamManagement(save: SaveData): TeamManagement | null {
     weeklyIncome: team.weeklyIncome,
     weeklyCosts: team.weeklyCosts,
     sponsors: team.sponsors,
+    driverFinancials: calculateDriverContractFinancials(save.season, team.id),
     facilities: team.facilities,
     staff: team.staff,
     car: team.car,
@@ -292,6 +296,62 @@ export function getLatestConstructorDevelopmentReports(save: SaveData): Construc
   return reports
     .filter((report) => report.seasonYear === latestYear)
     .sort((a, b) => tierRank[a.tier] - tierRank[b.tier] || b.paceDelta - a.paceDelta || a.teamName.localeCompare(b.teamName));
+}
+
+export type TechnicalReview = {
+  seasonYear: number;
+  teams: Array<{
+    teamId: string;
+    name: string;
+    abbreviation: string;
+    pace: number;
+    reliability: number;
+    staff: number;
+    facilities: number;
+    budget: number;
+  }>;
+  powerUnits: Array<{
+    id: PowerUnitManufacturerId;
+    name: string;
+    engineName: string;
+    overall: number;
+    ice: number;
+    ers: number;
+    reliability: number;
+    integration: number;
+  }>;
+  reports: ConstructorDevelopmentReport[];
+};
+
+export function getTechnicalReview(save: SaveData): TechnicalReview {
+  return {
+    seasonYear: save.season.seasonYear,
+    teams: Object.values(save.season.teams)
+      .map((team) => ({
+        teamId: team.id,
+        name: team.name,
+        abbreviation: team.abbreviation,
+        pace: team.car.pace,
+        reliability: team.car.reliability,
+        staff: Math.round((team.staff.engineering + team.staff.operations + team.staff.aeroLead) / 3),
+        facilities: Math.round((team.facilities.factory + team.facilities.cfd + team.facilities.simulator) / 3),
+        budget: team.budget,
+      }))
+      .sort((a, b) => b.pace - a.pace || b.reliability - a.reliability),
+    powerUnits: Object.values(save.season.powerUnits ?? {})
+      .map((powerUnit) => ({
+        id: powerUnit.id,
+        name: powerUnit.name,
+        engineName: powerUnit.engineName,
+        overall: powerUnit.ratings.overall,
+        ice: powerUnit.ratings.ice,
+        ers: powerUnit.ratings.ers,
+        reliability: powerUnit.ratings.reliability,
+        integration: powerUnit.ratings.integration,
+      }))
+      .sort((a, b) => b.overall - a.overall),
+    reports: getLatestConstructorDevelopmentReports(save),
+  };
 }
 
 export type CalendarRow = CalendarEvent & { completed: boolean; isNext: boolean };

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ManagementFrame } from "@/components/management/ManagementFrame";
 import { simulationSession } from "@/lib/sim/session";
 import { getStandings } from "@/lib/sim/selectors";
@@ -69,6 +69,7 @@ function ConstructorWinterChanges({ reports }: { reports: ConstructorDevelopment
 }
 
 function SeasonReviewBody({ saveId }: { saveId: string }) {
+  const router = useRouter();
   const [awards, setAwards] = useState<SeasonAwards | null>(null);
   const [retirements, setRetirements] = useState<RetirementRow[]>([]);
   const [standings, setStandings] = useState<ReturnType<typeof getStandings> | null>(null);
@@ -90,6 +91,11 @@ function SeasonReviewBody({ saveId }: { saveId: string }) {
   }, []);
 
   if (!awards) return <p className="text-zinc-400">Loading season review...</p>;
+
+  const continueToBoardReview = () => {
+    simulationSession.completeOffseasonStep("season-summary");
+    router.push(`/owner-confidence?saveId=${saveId}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -170,12 +176,13 @@ function SeasonReviewBody({ saveId }: { saveId: string }) {
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Link
-          href={`/owner-confidence?saveId=${saveId}`}
+        <button
+          type="button"
+          onClick={continueToBoardReview}
           className="ui-interactive rounded bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"
         >
           Continue to board review
-        </Link>
+        </button>
         <Link href={`/dashboard?saveId=${saveId}`} className="ui-interactive rounded border border-zinc-600 px-4 py-2 text-sm text-zinc-200">
           Back to dashboard
         </Link>

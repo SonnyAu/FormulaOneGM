@@ -4,6 +4,7 @@ import { getDriverProfile } from "@/data/driverProfiles";
 import { getCarProfile } from "@/data/carProfiles";
 import { RaceEntry, RaceWeekendState, StrategyPersonality } from "@/lib/sim/raceweekend/raceTypes";
 import { advancePhase, autoFinishRace, createRaceWeekend } from "@/lib/sim/raceweekend/raceWeekendEngine";
+import { computePackageStrength } from "@/lib/sim/raceweekend/trackProfiles";
 
 const PERSONALITIES: StrategyPersonality[] = ["AGGRESSIVE", "BALANCED", "CONSERVATIVE", "GAMBLER"];
 
@@ -20,7 +21,7 @@ export function buildDemoEntries(playerTeamId = "ferrari"): RaceEntry[] {
     team.driverIds.forEach((driverId) => {
       const info = driverMap.get(driverId);
       const driver = getDriverProfile(driverId, info?.name ?? driverId, 75);
-      const skill = clamp((car.overall * 0.6 + driver.overall * 0.4 - 58) / 40, 0.2, 1);
+      const skill = clamp((computePackageStrength(car.overall, driver.overall) - 58) / 40, 0.2, 1);
       entries.push({
         driverId,
         teamId: team.id,

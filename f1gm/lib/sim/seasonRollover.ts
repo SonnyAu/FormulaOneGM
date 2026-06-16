@@ -1,6 +1,9 @@
 import { createCalendar } from "@/lib/sim/factory";
 import { applyOffseasonConstructorDevelopment } from "@/lib/sim/constructorDevelopment";
+import { autoProcessAiDriverContracts, ensureDriverContractState } from "@/lib/sim/driverContracts";
+import { resetOffseasonForNewSeason } from "@/lib/sim/offseason";
 import { applyPowerUnitOffseason } from "@/lib/sim/powerUnits";
+import { autoProcessAiSponsors, ensureSponsorState, syncTeamSponsorState } from "@/lib/sim/sponsors";
 import { getSeasonAwards, getSeasonChampions } from "@/lib/sim/awards";
 import {
   generateAcademyProspect,
@@ -52,6 +55,11 @@ export function startNextSeason(save: SaveData): SaveData {
   const champions = getSeasonChampions(next);
   const retirements: HistoricalArchiveRecord["retirements"] = [];
 
+  ensureSponsorState(next);
+  ensureDriverContractState(next);
+  season.eventLog.push(...autoProcessAiDriverContracts(next));
+  season.eventLog.push(...autoProcessAiSponsors(next));
+
   const archiveRecord: HistoricalArchiveRecord = {
     seasonYear: season.seasonYear,
     raceResults: [...season.raceHistory],
@@ -70,6 +78,8 @@ export function startNextSeason(save: SaveData): SaveData {
 
   applyOffseasonConstructorDevelopment(next, newYear);
   season.eventLog.push(...applyPowerUnitOffseason(next, newYear));
+  syncTeamSponsorState(season);
+  ensureDriverContractState(next);
 
   for (const driver of Object.values(season.roster)) {
     if (!driver.active) continue;
@@ -142,6 +152,7 @@ export function startNextSeason(save: SaveData): SaveData {
   season.calendar = createCalendar(newYear);
   season.activeRaceWeekend = null;
   season.pendingWeekendPlan = null;
+  resetOffseasonForNewSeason(next);
 
   next.meta.week = 1;
   next.meta.updatedAt = new Date().toISOString();

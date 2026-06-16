@@ -1,9 +1,27 @@
 import { getLikelyRetirements, getSeasonAwards, isSeasonComplete } from "@/lib/sim/awards";
 import { createNewSave } from "@/lib/sim/factory";
 import { finalizeRaceWeekend, runSimulationTick } from "@/lib/sim/engine";
+import {
+  driverOfferAcceptance,
+  expiringPlayerDriverRows,
+  freeAgentDriverRows,
+  releaseUnsignedPlayerExpiringDrivers,
+  signDriverToTeam,
+  signOptimalDriver as signDriverWithOptimalOffer,
+  playerNeedsFreeAgentSigning,
+  type DriverMarketRow,
+} from "@/lib/sim/driverContracts";
 import { getNewsFeed } from "@/lib/sim/news";
+import { canStartNextSeason, completeOffseasonStep as advanceOffseasonStep, ensureOffseasonState } from "@/lib/sim/offseason";
 import { recordOwnerConfidenceReview } from "@/lib/sim/ownerConfidence";
 import { startNextSeason } from "@/lib/sim/seasonRollover";
+import {
+  availableSponsorMarket,
+  evaluateSponsorRenewal,
+  expiringSponsorContracts,
+  renewSponsorContract,
+  signSponsorFromMarket,
+} from "@/lib/sim/sponsors";
 import {
   AcademyViewRow,
   CalendarRow,
@@ -17,12 +35,14 @@ import {
   getRosterView,
   getStandings,
   getTeamManagement,
+  getTechnicalReview as buildTechnicalReview,
   getWeekendPlanRecommendation,
   RaceResultRow,
   TeamManagement,
   type HistoryView,
   type PowerUnitManagement,
   type RosterView,
+  type TechnicalReview,
 } from "@/lib/sim/selectors";
 import {
   commitPowerUnitDevelopmentProgram as setPowerUnitDevelopmentProgram,
@@ -44,6 +64,11 @@ import {
   PowerUnitManufacturerId,
   SeasonAwards,
   ConstructorDevelopmentReport,
+  DriverLineupRole,
+  OffseasonState,
+  OffseasonStep,
+  SponsorContract,
+  SponsorRenewalTarget,
   TeamDecision,
   WeekendPlan,
 } from "@/types/sim";
@@ -83,6 +108,24 @@ export type PlayThroughStepResult = {
   targetRaceCount: number;
   totalRaceCount: number;
   raceResult?: RaceResult;
+};
+
+export type DriverOfferPreview = {
+  accepted: boolean;
+  label: "likely" | "uncertain" | "unlikely" | "refused";
+  reason: string;
+};
+
+export type SponsorRenewalRow = {
+  contract: SponsorContract;
+  passed: boolean;
+  actual: {
+    constructorPosition: number;
+    points: number;
+    wins: number;
+    podiums: number;
+  };
+  target: SponsorRenewalTarget;
 };
 
 class SimulationSessionService {
@@ -205,10 +248,111 @@ class SimulationSessionService {
     return data ? { ok: true, data } : { ok: false, error: "Player team not found." };
   }
 
+  getOffseasonStatus(): GameActionResult<OffseasonState> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: ensureOffseasonState(this.activeSave) };
+  }
+
+  completeOffseasonStep(step: OffseasonStep): GameActionResult<OffseasonState> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    if (!isSeasonComplete(this.activeSave)) return { ok: false, error: "The offseason opens after the season review." };
+    const current = ensureOffseasonState(this.activeSave);
+    if (!current.active && step !== "season-summary") {
+      return { ok: false, error: "Start at the season summary before advancing offseason steps." };
+    }
+    if (current.active && current.step !== step && current.step !== "ready") {
+      return { ok: false, error: `Complete the current offseason step first: ${current.step}.` };
+    }
+
+    if (step === "resign-drivers") {
+      releaseUnsignedPlayerExpiringDrivers(this.activeSave);
+    }
+    if (step === "free-agent-drivers" && playerNeedsFreeAgentSigning(this.activeSave)) {
+      return { ok: false, error: "Fill both race seats before advancing." };
+    }
+
+    const state = advanceOffseasonStep(this.activeSave, step);
+    this.queueAutosave();
+    return { ok: true, data: state };
+  }
+
+  getDriverReSignMarket(): GameActionResult<DriverMarketRow[]> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: expiringPlayerDriverRows(this.activeSave) };
+  }
+
+  getFreeAgentMarket(): GameActionResult<DriverMarketRow[]> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: freeAgentDriverRows(this.activeSave) };
+  }
+
+  signOptimalDriver(driverId: string, role: DriverLineupRole): GameActionResult<void> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const result = signDriverWithOptimalOffer(this.activeSave, driverId, this.activeSave.meta.playerTeamId, role);
+    if (!result.ok) return result;
+    this.queueAutosave();
+    return { ok: true, data: undefined };
+  }
+
+  negotiateDriverContract(driverId: string, role: DriverLineupRole, years: number, salary: number): GameActionResult<void> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const result = signDriverToTeam(this.activeSave, driverId, this.activeSave.meta.playerTeamId, { role, years, salary });
+    if (!result.ok) return result;
+    this.queueAutosave();
+    return { ok: true, data: undefined };
+  }
+
+  previewDriverOffer(driverId: string, role: DriverLineupRole, years: number, salary: number): GameActionResult<DriverOfferPreview> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return {
+      ok: true,
+      data: driverOfferAcceptance(this.activeSave, driverId, this.activeSave.meta.playerTeamId, { role, years, salary }),
+    };
+  }
+
+  getSponsorRenewals(): GameActionResult<SponsorRenewalRow[]> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const season = this.activeSave.season;
+    const teamId = this.activeSave.meta.playerTeamId;
+    return {
+      ok: true,
+      data: expiringSponsorContracts(season, teamId).map((contract) => {
+        const evaluation = evaluateSponsorRenewal(contract, season);
+        return { contract, ...evaluation };
+      }),
+    };
+  }
+
+  getSponsorMarket(): GameActionResult<ReturnType<typeof availableSponsorMarket>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: availableSponsorMarket(this.activeSave.season, this.activeSave.meta.playerTeamId) };
+  }
+
+  renewSponsor(contractId: string): GameActionResult<void> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const result = renewSponsorContract(this.activeSave, this.activeSave.meta.playerTeamId, contractId, 1);
+    if (!result.ok) return result;
+    this.queueAutosave();
+    return { ok: true, data: undefined };
+  }
+
+  signSponsor(sponsorId: string): GameActionResult<void> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const result = signSponsorFromMarket(this.activeSave, this.activeSave.meta.playerTeamId, sponsorId, 1);
+    if (!result.ok) return result;
+    this.queueAutosave();
+    return { ok: true, data: undefined };
+  }
+
   getPowerUnitManagement(): GameActionResult<PowerUnitManagement> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
     const data = getPowerUnitManagement(this.activeSave);
     return data ? { ok: true, data } : { ok: false, error: "Player team not found." };
+  }
+
+  getTechnicalReview(): GameActionResult<TechnicalReview> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: buildTechnicalReview(this.activeSave) };
   }
 
   commitPowerUnitDevelopmentProgram(program: PowerUnitDevelopmentProgram): GameActionResult<void> {
@@ -553,6 +697,9 @@ class SimulationSessionService {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
     if (!isSeasonComplete(this.activeSave)) {
       return { ok: false, error: "Season is not complete yet." };
+    }
+    if (!canStartNextSeason(this.activeSave)) {
+      return { ok: false, error: "Complete the offseason review before starting the next season." };
     }
     const review = recordOwnerConfidenceReview(this.activeSave);
     if (review.wasFired) {

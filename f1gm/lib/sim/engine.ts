@@ -1,9 +1,11 @@
 import { processDevelopment } from "@/lib/sim/subsystems/development";
 import { aiWeekendPlan, defaultWeekendPlan, recommendWeekendPlan, weekendPlanToDecision } from "@/lib/sim/subsystems/weekendPlan";
 import { applyInSeasonGrowthForRaceDrivers, recordRaceWeekendSeatTime } from "@/lib/sim/driverCareer";
+import { applyDriverContractWeeklyEconomy, ensureDriverContractState } from "@/lib/sim/driverContracts";
 import { buildRaceHeadlines } from "@/lib/sim/news";
 import { applyPowerUnitWeeklyEconomy } from "@/lib/sim/powerUnits";
 import { applyRaceWeekendResult, createRaceWeekendFromSeason } from "@/lib/sim/raceweekend/adapter";
+import { ensureSponsorState, syncTeamSponsorState } from "@/lib/sim/sponsors";
 import { EventLogEntry, SaveData, SaveDifficulty, SeasonState, SimulationDelta, TeamDecision, TeamState, WeekendPlan } from "@/types/sim";
 
 function event(category: EventLogEntry["category"], message: string, week: number, tick: number, teamId?: string): EventLogEntry {
@@ -59,6 +61,14 @@ function applyWeekendSpendAndSponsor(team: TeamState, decision: TeamDecision): T
   };
 }
 
+function applySponsorConfidenceToContracts(season: SeasonState, teamId: string, delta: number) {
+  for (const contract of season.sponsorContracts ?? []) {
+    if (contract.teamId !== teamId) continue;
+    if (contract.startSeason > season.seasonYear || contract.endSeason < season.seasonYear) continue;
+    contract.confidence = clamp(contract.confidence + delta, 0, 100);
+  }
+}
+
 function resolvePlayerPlan(season: SeasonState, team: TeamState, difficulty: SaveDifficulty): WeekendPlan {
   const committed = season.pendingWeekendPlan;
   if (committed && !committed.autoManaged) return committed;
@@ -80,6 +90,8 @@ function applyWeekendDevelopment(season: SeasonState, playerTeamId: string, diff
     const decision = weekendPlanToDecision(team, plan, week, season.tick, team.id === playerTeamId ? "player" : "ai");
 
     let updated = applyWeekendSpendAndSponsor(team, decision);
+    const sponsorConfidenceDelta = decision.sponsorRisk === "high" ? -2 : decision.sponsorRisk === "balanced" ? 0 : 1;
+    applySponsorConfidenceToContracts(season, team.id, sponsorConfidenceDelta);
     updated = processDevelopment(updated, decision, week);
     season.teams[team.id] = updated;
     season.decisionHistory.push(decision);
@@ -116,10 +128,15 @@ export function runSimulationTick(save: SaveData, playerDecisions: TeamDecision[
 
   const events: EventLogEntry[] = [];
 
+  ensureSponsorState(next);
+  ensureDriverContractState(next);
+  syncTeamSponsorState(season);
   for (const team of Object.values(season.teams)) {
     season.teams[team.id] = applyPassiveWeeklyEconomy(team);
   }
   applyPowerUnitWeeklyEconomy(season);
+  applyDriverContractWeeklyEconomy(season);
+  syncTeamSponsorState(season);
 
   const calendarEvent = season.calendar.find((entry) => entry.week === season.currentWeek) ?? null;
 
@@ -160,6 +177,9 @@ export function finalizeRaceWeekend(save: SaveData): { save: SaveData; delta: Si
 
   const events: EventLogEntry[] = [];
 
+  ensureSponsorState(next);
+  ensureDriverContractState(next);
+
   if (weekend) {
     const raceResult = applyRaceWeekendResult(season, weekend);
     season.raceHistory.push(raceResult);
@@ -174,6 +194,7 @@ export function finalizeRaceWeekend(save: SaveData): { save: SaveData; delta: Si
   }
 
   events.push(...applyWeekendDevelopment(season, next.meta.playerTeamId, next.meta.difficulty));
+  syncTeamSponsorState(season);
 
   season.activeRaceWeekend = null;
   season.currentWeek += 1;

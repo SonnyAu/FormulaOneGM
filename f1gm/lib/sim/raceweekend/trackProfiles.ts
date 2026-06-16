@@ -142,12 +142,37 @@ function weightedAverage<T extends Record<string, number>>(source: T, weights: P
   return weightSum === 0 ? 75 : total / weightSum;
 }
 
+export type PaceBlendMode = "race" | "qualifying";
+
+/**
+ * Driver share of lap pace. F1 is primarily an engineering contest (~70–80% car);
+ * elite drivers can pull a few extra points toward the driver side of the split.
+ */
+export function driverPaceShare(driver: DriverProfile, mode: PaceBlendMode = "race"): number {
+  const base = mode === "qualifying" ? 0.28 : 0.22;
+  const cap = mode === "qualifying" ? 0.35 : 0.3;
+  const eliteBonus = Math.max(0, (driver.overall - 80) / 150);
+  return Math.min(cap, base + eliteBonus);
+}
+
+/** Blend car and driver overall ratings for strategy / package strength heuristics. */
+export function computePackageStrength(carOverall: number, driverOverall: number, mode: PaceBlendMode = "race"): number {
+  const driverShare = driverPaceShare({ overall: driverOverall } as DriverProfile, mode);
+  return carOverall * (1 - driverShare) + driverOverall * driverShare;
+}
+
 /**
  * Combined performance level (roughly 0-100) of a driver+car pairing at a track.
- * Car contributes more than driver, matching real F1 weighting.
+ * Car dominates; stronger drivers extract slightly more from the package.
  */
-export function computeTrackFitScore(driver: DriverProfile, car: CarProfile, track: TrackProfile): number {
+export function computeTrackFitScore(
+  driver: DriverProfile,
+  car: CarProfile,
+  track: TrackProfile,
+  mode: PaceBlendMode = "race",
+): number {
   const driverScore = weightedAverage(driver as unknown as Record<string, number>, track.driverTraitWeights);
   const carScore = weightedAverage(car as unknown as Record<string, number>, track.carTraitWeights);
-  return driverScore * 0.4 + carScore * 0.6;
+  const driverShare = driverPaceShare(driver, mode);
+  return driverScore * driverShare + carScore * (1 - driverShare);
 }

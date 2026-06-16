@@ -1,7 +1,10 @@
 import { teams } from "@/data/teams";
+import { ensureDriverContractState } from "@/lib/sim/driverContracts";
+import { ensureOffseasonState } from "@/lib/sim/offseason";
 import { createInitialJobSecurityState } from "@/lib/sim/ownerConfidence";
 import { buildInitialPowerUnitState, isWorksTeamId } from "@/lib/sim/powerUnits";
 import { buildInitialAcademy, buildRosterFromTeams } from "@/lib/sim/roster";
+import { buildInitialSponsorContracts, syncTeamSponsorState } from "@/lib/sim/sponsors";
 import { TeamSelection } from "@/types/f1";
 import {
   CalendarEvent,
@@ -56,12 +59,19 @@ export function createCalendar(seasonYear: number): CalendarEvent[] {
   return calendar;
 }
 
-function createBaselineTeam(teamId: string, name: string, abbreviation: string, teamType: "works" | "customer"): TeamState {
+function createBaselineTeam(
+  teamId: string,
+  name: string,
+  nameTemplate: string,
+  abbreviation: string,
+  teamType: "works" | "customer",
+): TeamState {
   const worksBonus = teamType === "works" ? 1 : 0;
 
   return {
     id: teamId,
     name,
+    nameTemplate,
     abbreviation,
     teamType,
     budget: teamType === "works" ? 200_000_000 : 130_000_000,
@@ -74,6 +84,7 @@ function createBaselineTeam(teamId: string, name: string, abbreviation: string, 
       titleSponsor: `${abbreviation} Global Partners`,
       confidence: 60 + worksBonus * 8,
       basePayout: teamType === "works" ? 2_100_000 : 1_500_000,
+      portfolio: [],
     },
     rd: {
       aero: 50 + worksBonus * 8,
@@ -111,6 +122,7 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
     createBaselineTeam(
       team.id,
       team.entrant,
+      team.nameTemplate,
       team.abbreviation,
       isWorksTeamId(team.id) ? "works" : "customer",
     ),
@@ -122,6 +134,7 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
     const customTeam = createBaselineTeam(
       playerTeamId,
       selection.team.constructorName,
+      "{titleSponsor}",
       selection.team.constructorName.slice(0, 3).toUpperCase(),
       "customer",
     );
@@ -133,6 +146,13 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
 
   const teamsById = Object.fromEntries(gameTeams.map((team) => [team.id, team]));
   const powerUnitState = buildInitialPowerUnitState(Object.keys(teamsById), seasonYear);
+  const sponsorContracts = buildInitialSponsorContracts(
+    Object.keys(teamsById),
+    seasonYear,
+    selection.mode === "custom"
+      ? { teamId: playerTeamId, constructorName: selection.team.constructorName }
+      : undefined,
+  );
 
   const customDrivers =
     selection.mode === "custom"
@@ -182,6 +202,10 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
     roster,
     academy,
     jobSecurity: createInitialJobSecurityState(playerTeamId),
+    offseason: { active: false, step: "season-summary", completedSteps: [] },
+    sponsorContracts,
+    driverContracts: [],
+    driverMood: {},
     powerUnits: powerUnitState.powerUnits,
     powerUnitContracts: powerUnitState.powerUnitContracts,
     eventLog: [
@@ -195,6 +219,10 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
       },
     ],
   };
+
+  syncTeamSponsorState(season);
+  ensureDriverContractState({ meta, season });
+  ensureOffseasonState({ meta, season });
 
   return { meta, season };
 }

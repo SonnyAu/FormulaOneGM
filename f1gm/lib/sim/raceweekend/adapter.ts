@@ -5,6 +5,7 @@ import { carProfiles, getCarProfile } from "@/data/carProfiles";
 import { applyPowerUnitPerformance } from "@/lib/sim/powerUnits";
 import { activeDriversForTeam } from "@/lib/sim/roster";
 import { createRaceWeekend } from "@/lib/sim/raceweekend/raceWeekendEngine";
+import { computePackageStrength } from "@/lib/sim/raceweekend/trackProfiles";
 import { CarProfile, RaceEntry, RaceWeekendResult, RaceWeekendState, StrategyPersonality } from "@/lib/sim/raceweekend/raceTypes";
 import { CalendarEvent, DriverRaceResult, RaceResult, SeasonState, TeamState } from "@/types/sim";
 
@@ -75,7 +76,7 @@ function buildEntry(season: SeasonState, teamState: TeamState, driverId: string,
     getDriverProfile(driverId, driverInfo?.name ?? rosterDriver?.name ?? `${teamState.abbreviation} Driver`, 75);
   const personality = personalityFor(teamState);
   // Stronger overall packages make sharper strategy calls.
-  const skill = clamp((car.overall * 0.6 + driver.overall * 0.4 - 58) / 40, 0.2, 1);
+  const skill = clamp((computePackageStrength(car.overall, driver.overall) - 58) / 40, 0.2, 1);
 
   return {
     driverId,

@@ -315,6 +315,10 @@ export function buildInitialPowerUnitState(
       consecutiveLowConfidenceSeasons: 0,
       lastReview: null,
     },
+    offseason: { active: false, step: "season-summary", completedSteps: [] },
+    sponsorContracts: [],
+    driverContracts: [],
+    driverMood: {},
     powerUnits,
     powerUnitContracts: [],
   };

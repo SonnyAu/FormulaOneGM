@@ -1,6 +1,7 @@
 import type { DriverProfile, RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
+import type { SponsorAmbition, SponsorCategory } from "@/types/f1";
 
-export const SAVE_SCHEMA_VERSION = 10;
+export const SAVE_SCHEMA_VERSION = 11;
 
 export type SaveDifficulty = "easy" | "standard" | "hard";
 
@@ -83,6 +84,79 @@ export type PowerUnitFinancials = {
   weeklyNet: number;
 };
 
+export type OffseasonStep =
+  | "season-summary"
+  | "owner-confidence"
+  | "resign-drivers"
+  | "free-agent-drivers"
+  | "resign-sponsors"
+  | "technical-review"
+  | "ready";
+
+export type OffseasonState = {
+  active: boolean;
+  step: OffseasonStep;
+  completedSteps: OffseasonStep[];
+};
+
+export type SponsorRenewalTarget = {
+  minimumConstructorPosition: number;
+  minimumPoints?: number;
+  minimumPodiums?: number;
+  minimumWins?: number;
+  description: string;
+};
+
+export type SponsorContract = {
+  id: string;
+  sponsorId: string;
+  teamId: string;
+  name: string;
+  titleName?: string;
+  category: SponsorCategory;
+  annualValue: number;
+  startSeason: number;
+  endSeason: number;
+  confidence: number;
+  renewalTarget: SponsorRenewalTarget;
+  ambition?: SponsorAmbition;
+  namingPartner?: boolean;
+};
+
+export type DriverContractStatus = "active" | "future" | "expired";
+
+export type DriverContract = {
+  id: string;
+  driverId: string;
+  teamId: string;
+  salary: number;
+  startSeason: number;
+  endSeason: number;
+  role: DriverLineupRole;
+  status: DriverContractStatus;
+};
+
+export type DriverMoodLabel = "eager" | "open" | "uncertain" | "unhappy";
+
+export type DriverMoodFactor = {
+  label: string;
+  detail: string;
+  delta: number;
+  tone: "good" | "neutral" | "bad";
+};
+
+export type DriverMood = {
+  driverId: string;
+  score: number;
+  label: DriverMoodLabel;
+  factors: DriverMoodFactor[];
+};
+
+export type DriverContractFinancials = {
+  annualCost: number;
+  weeklyCost: number;
+};
+
 export type OwnerRiskTier = "secure" | "watched" | "at-risk" | "final-warning";
 
 export type OwnerWarningLevel = "none" | "watched" | "at-risk" | "final-warning" | "fired";
@@ -155,6 +229,7 @@ export type WeekendPlan = {
 export type TeamState = {
   id: string;
   name: string;
+  nameTemplate: string;
   abbreviation: string;
   teamType: TeamType;
   budget: number;
@@ -175,6 +250,7 @@ export type TeamState = {
     titleSponsor: string;
     confidence: number;
     basePayout: number;
+    portfolio: SponsorContract[];
   };
   rd: {
     aero: number;
@@ -380,6 +456,10 @@ export type SeasonState = {
   roster: Record<string, DriverSeasonInfo>;
   academy: AcademyState;
   jobSecurity: JobSecurityState;
+  offseason: OffseasonState;
+  sponsorContracts: SponsorContract[];
+  driverContracts: DriverContract[];
+  driverMood: Record<string, DriverMood>;
   powerUnits: Record<PowerUnitManufacturerId, PowerUnitManufacturerState>;
   powerUnitContracts: PowerUnitContract[];
 };

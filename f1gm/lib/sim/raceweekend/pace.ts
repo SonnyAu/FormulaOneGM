@@ -108,10 +108,10 @@ export function computeQualifyingLap(
   tire: TireState,
   rng: RngState,
 ): number {
-  const fit = computeTrackFitScore(driver, car, track);
+  const fit = computeTrackFitScore(driver, car, track, "qualifying");
   const carDelta = (85 - fit) * 0.0016;
-  // Qualifying precision rewards the qualifying trait directly.
-  const qualiBonus = -(driver.qualifying - 80) * 0.0004 * (0.6 + track.demands.qualifyingPrecision);
+  // Qualifying precision still matters, but less than raw car performance.
+  const qualiBonus = -(driver.qualifying - 80) * 0.0002 * (0.6 + track.demands.qualifyingPrecision);
   const compoundPct = COMPOUND_INFO[tire.compound].pacePct;
   const wearPct = tireWearPenalty(tire);
   const variance = (1.1 - driver.consistency / 130) * 0.0025;

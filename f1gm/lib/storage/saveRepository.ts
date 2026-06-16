@@ -1,6 +1,9 @@
 import { buildDriverSeasonInfo, buildInitialAcademy, buildRosterFromTeams, ensureTeamLineupStructure } from "@/lib/sim/roster";
+import { ensureDriverContractState } from "@/lib/sim/driverContracts";
+import { ensureOffseasonState } from "@/lib/sim/offseason";
 import { ensureJobSecurityState } from "@/lib/sim/ownerConfidence";
 import { ensurePowerUnitState } from "@/lib/sim/powerUnits";
+import { ensureSponsorState } from "@/lib/sim/sponsors";
 import type { DriverRaceState, RaceClassificationRow, RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
 import { idbDelete, idbGet, idbGetAll, idbPut } from "@/lib/storage/indexedDb";
 import { DriverRaceResult, SAVE_SCHEMA_VERSION, SaveData, SaveMetadata } from "@/types/sim";
@@ -152,6 +155,11 @@ function migrateSaveData(record: SaveRecord): SaveData | null {
   // v10: persistent power unit manufacturers, contracts, and works/customer classification.
   ensurePowerUnitState(save);
 
+  // v11: sponsor contracts, driver contracts/mood, and strict offseason state.
+  ensureSponsorState(save);
+  ensureDriverContractState(save);
+  ensureOffseasonState(save);
+
   return save;
 }
 
@@ -162,6 +170,7 @@ function buildMetadata(save: SaveData): SaveMetadata {
     version: SAVE_SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
     lastPlayedAt: new Date().toISOString(),
+    playerTeamName: player?.name ?? save.meta.playerTeamName,
     seasonYear: save.season.seasonYear,
     week: save.season.currentWeek,
     summary: {

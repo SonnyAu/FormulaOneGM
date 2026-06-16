@@ -75,16 +75,16 @@ function OwnerConfidenceBody({ saveId }: { saveId: string }) {
     };
   }, []);
 
-  const onStartNextSeason = useCallback(async () => {
+  const onContinue = useCallback(() => {
     setBusy(true);
     setError(null);
-    const result = await simulationSession.startNextSeason();
+    const result = simulationSession.completeOffseasonStep("owner-confidence");
     setBusy(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    router.push(`/dashboard?saveId=${saveId}`);
+    router.push(`/offseason/resign-drivers?saveId=${saveId}`);
   }, [router, saveId]);
 
   if (error && !review) {
@@ -199,11 +199,11 @@ function OwnerConfidenceBody({ saveId }: { saveId: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={onStartNextSeason}
+          onClick={onContinue}
           disabled={busy || review.wasFired}
           className="ui-interactive rounded bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Start {review.seasonYear + 1} season
+          Continue to driver contracts
         </button>
         <Link href={`/season-review?saveId=${saveId}`} className="ui-interactive rounded border border-zinc-600 px-4 py-2 text-sm text-zinc-200">
           Back to season review
