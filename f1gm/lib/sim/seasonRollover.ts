@@ -1,4 +1,5 @@
 import { createCalendar } from "@/lib/sim/factory";
+import { applyOffseasonConstructorDevelopment } from "@/lib/sim/constructorDevelopment";
 import { getSeasonAwards, getSeasonChampions } from "@/lib/sim/awards";
 import {
   generateAcademyProspect,
@@ -65,6 +66,8 @@ export function startNextSeason(save: SaveData): SaveData {
   const newYear = season.seasonYear + 1;
   season.seasonYear = newYear;
   next.meta.seasonYear = newYear;
+
+  applyOffseasonConstructorDevelopment(next, newYear);
 
   for (const driver of Object.values(season.roster)) {
     if (!driver.active) continue;

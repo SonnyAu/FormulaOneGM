@@ -1,5 +1,5 @@
 import { RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
-import { COMPOUND_LABEL, compoundBadgeClass, EntryView, healthColor } from "@/components/raceweekend/helpers";
+import { COMPOUND_LABEL, compoundBadgeClass, EntryView, healthColor, issueLabel } from "@/components/raceweekend/helpers";
 
 type TireCardsProps = {
   weekend: RaceWeekendState;
@@ -19,6 +19,11 @@ export function TireCards({ weekend, entryMap }: TireCardsProps) {
       <div className="grid gap-3 sm:grid-cols-2">
         {playerDrivers.map((driver) => {
           const entry = entryMap[driver.driverId];
+          const statusNotes: string[] = [];
+          if (driver.activeIssue) statusNotes.push(issueLabel(driver.activeIssue.kind));
+          if (driver.penaltySeconds > 0) statusNotes.push(`+${driver.penaltySeconds}s penalty`);
+          if (driver.issueCount > 0 && !driver.activeIssue) statusNotes.push(`${driver.issueCount} issue${driver.issueCount === 1 ? "" : "s"}`);
+
           return (
             <div key={driver.driverId} className="rounded border border-zinc-700 bg-[#222a35] p-3">
               <div className="flex items-center justify-between">
@@ -28,7 +33,7 @@ export function TireCards({ weekend, entryMap }: TireCardsProps) {
                 </span>
               </div>
               <p className="text-xs text-zinc-500">
-                P{driver.position} · {driver.tire.ageLaps} laps · {driver.pitStops} stop{driver.pitStops === 1 ? "" : "s"} · {driver.paceMode}
+                P{driver.position} - {driver.tire.ageLaps} laps - {driver.pitStops} stop{driver.pitStops === 1 ? "" : "s"} - {driver.paceMode}
               </p>
               <div className="mt-2">
                 <div className="mb-0.5 flex justify-between text-xs text-zinc-400">
@@ -39,7 +44,8 @@ export function TireCards({ weekend, entryMap }: TireCardsProps) {
                   <div className={`h-full ${healthColor(driver.tire.health)}`} style={{ width: `${Math.max(0, Math.min(100, driver.tire.health))}%` }} />
                 </div>
               </div>
-              {driver.dnf ? <p className="mt-2 text-xs text-red-400">Retired{driver.dnfReason ? ` — ${driver.dnfReason}` : ""}</p> : null}
+              {statusNotes.length ? <p className="mt-2 text-xs text-amber-200">{statusNotes.join(" | ")}</p> : null}
+              {driver.dnf ? <p className="mt-2 text-xs text-red-400">Retired{driver.dnfReason ? ` - ${driver.dnfReason}` : ""}</p> : null}
             </div>
           );
         })}

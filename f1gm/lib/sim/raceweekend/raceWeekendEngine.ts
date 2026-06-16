@@ -129,6 +129,8 @@ function buildResult(weekend: RaceWeekendState): RaceWeekendResult {
         totalTimeSeconds: driver.totalTimeSeconds,
         lapsCompleted: driver.lapsCompleted,
         dnf: driver.dnf,
+        penaltySeconds: driver.penaltySeconds,
+        issueCount: driver.issueCount,
         points,
         hasFastestLap: driver.hasFastestLap,
       });

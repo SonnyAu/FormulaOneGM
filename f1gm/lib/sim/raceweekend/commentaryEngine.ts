@@ -24,6 +24,36 @@ function message(lap: number, phase: SessionPhase, text: string, importance: Com
   return { id: `c-${lap}-${commentaryCounter}`, lap, phase, text, importance };
 }
 
+function issueLabel(issueKind: RaceEvent["issueKind"]): string {
+  switch (issueKind) {
+    case "power-loss":
+      return "power loss";
+    case "cooling":
+      return "cooling issue";
+    case "gearbox":
+      return "gearbox issue";
+    case "lock-up":
+      return "lock-up";
+    case "wide-moment":
+      return "wide moment";
+    default:
+      return "issue";
+  }
+}
+
+function penaltyLabel(penaltyKind: RaceEvent["penaltyKind"]): string {
+  switch (penaltyKind) {
+    case "track-limits":
+      return "track limits";
+    case "unsafe-defending":
+      return "unsafe defending";
+    case "pit-lane-speeding":
+      return "pit lane speeding";
+    default:
+      return "race infringement";
+  }
+}
+
 /** Turn a single race event into zero or more readable play-by-play lines. */
 export function eventToCommentary(event: RaceEvent, ctx: CommentaryContext): CommentaryMessage[] {
   const lap = event.lap;
@@ -43,6 +73,17 @@ export function eventToCommentary(event: RaceEvent, ctx: CommentaryContext): Com
 
     case "lead-change":
       return [message(lap, ctx.phase, `${lapPrefix}: ${subject} takes the lead of the race!`, "high")];
+
+    case "race-issue":
+      return [message(lap, ctx.phase, `${lapPrefix}: ${subject} has a ${issueLabel(event.issueKind)}${event.detail ? ` - ${event.detail}` : ""}.`, "medium")];
+
+    case "issue-resolved":
+      return [message(lap, ctx.phase, `${lapPrefix}: ${subject} has the ${issueLabel(event.issueKind)} under control.`, "low")];
+
+    case "penalty": {
+      const seconds = event.penaltySeconds ? `${event.penaltySeconds}s` : "time";
+      return [message(lap, ctx.phase, `${lapPrefix}: ${subject} receives a ${seconds} penalty for ${penaltyLabel(event.penaltyKind)}${event.detail ? ` (${event.detail})` : ""}.`, "high")];
+    }
 
     case "pit": {
       const compound = event.compound ? COMPOUND_INFO[event.compound].label : "fresh tires";

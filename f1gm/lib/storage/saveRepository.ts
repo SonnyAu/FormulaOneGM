@@ -1,6 +1,8 @@
 import { buildDriverSeasonInfo, buildInitialAcademy, buildRosterFromTeams, ensureTeamLineupStructure } from "@/lib/sim/roster";
+import { ensureJobSecurityState } from "@/lib/sim/ownerConfidence";
+import type { DriverRaceState, RaceClassificationRow, RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
 import { idbDelete, idbGet, idbGetAll, idbPut } from "@/lib/storage/indexedDb";
-import { SAVE_SCHEMA_VERSION, SaveData, SaveMetadata } from "@/types/sim";
+import { DriverRaceResult, SAVE_SCHEMA_VERSION, SaveData, SaveMetadata } from "@/types/sim";
 
 type SaveRecord = {
   id: string;
@@ -32,6 +34,48 @@ function validateSaveData(candidate: unknown): candidate is SaveData {
     typeof season.currentRound === "number" &&
     isObjectLike(season.teams)
   );
+}
+
+function ensureDriverRaceIncidentFields(driver: Partial<DriverRaceState>) {
+  driver.activeIssue = driver.activeIssue ?? null;
+  driver.issueCount = driver.issueCount ?? 0;
+  driver.issueCooldownLaps = driver.issueCooldownLaps ?? 0;
+  driver.penaltySeconds = driver.penaltySeconds ?? 0;
+  driver.penalties = driver.penalties ?? [];
+}
+
+function ensureClassificationIncidentFields(row: Partial<RaceClassificationRow>) {
+  row.penaltySeconds = row.penaltySeconds ?? 0;
+  row.issueCount = row.issueCount ?? 0;
+}
+
+function ensureDriverResultIncidentFields(row: Partial<DriverRaceResult>) {
+  row.penaltySeconds = row.penaltySeconds ?? 0;
+  row.issueCount = row.issueCount ?? 0;
+}
+
+function ensureWeekendIncidentFields(weekend: RaceWeekendState | null | undefined) {
+  if (!weekend) return;
+
+  for (const driver of weekend.race?.drivers ?? []) {
+    ensureDriverRaceIncidentFields(driver);
+  }
+
+  for (const row of weekend.result?.classification ?? []) {
+    ensureClassificationIncidentFields(row);
+  }
+}
+
+function ensureRaceResultIncidentFields(save: SaveData) {
+  for (const race of save.season.raceHistory ?? []) {
+    for (const row of race.driverResults ?? []) ensureDriverResultIncidentFields(row);
+  }
+
+  for (const archive of save.season.archive ?? []) {
+    for (const race of archive.raceResults ?? []) {
+      for (const row of race.driverResults ?? []) ensureDriverResultIncidentFields(row);
+    }
+  }
 }
 
 function migrateSaveData(record: SaveRecord): SaveData | null {
@@ -91,6 +135,18 @@ function migrateSaveData(record: SaveRecord): SaveData | null {
 
   // v6: lineup roles, reserve drivers, hidden race experience.
   ensureTeamLineupStructure(save.season.roster, Object.keys(save.season.teams), save.season.seasonYear);
+
+  // v7: owner confidence and job-security tracking.
+  ensureJobSecurityState(save);
+
+  // v8: offseason constructor growth/regression reports.
+  if (save.season.constructorDevelopmentHistory === undefined) {
+    save.season.constructorDevelopmentHistory = [];
+  }
+
+  // v9: interactive race penalties/issues persisted into active weekends and race history.
+  ensureWeekendIncidentFields(save.season.activeRaceWeekend);
+  ensureRaceResultIncidentFields(save);
 
   return save;
 }

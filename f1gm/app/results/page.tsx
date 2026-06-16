@@ -6,6 +6,17 @@ import { ManagementFrame } from "@/components/management/ManagementFrame";
 import { simulationSession } from "@/lib/sim/session";
 import { RaceResultRow } from "@/lib/sim/selectors";
 
+type DriverRow = NonNullable<RaceResultRow["driverFinishingOrder"]>[number];
+
+function resultStatus(row: DriverRow): string {
+  if (row.dnf) return "Retired";
+
+  const notes = ["Finished"];
+  if (row.penaltySeconds > 0) notes.push(`+${row.penaltySeconds}s penalty`);
+  if (row.issueCount > 0) notes.push(`${row.issueCount} issue${row.issueCount === 1 ? "" : "s"}`);
+  return notes.join(" | ");
+}
+
 function ResultsBody() {
   const [rows] = useState<RaceResultRow[] | null>(() => {
     const result = simulationSession.getRaceResults();
@@ -44,7 +55,7 @@ function ResultsBody() {
                       </td>
                       <td className="border-t border-zinc-800 py-1.5">{row.teamAbbreviation}</td>
                       <td className="border-t border-zinc-800 py-1.5 text-right">{row.points}</td>
-                      <td className="border-t border-zinc-800 py-1.5 text-right text-xs">{row.dnf ? "Retired" : "Finished"}</td>
+                      <td className="border-t border-zinc-800 py-1.5 text-right text-xs">{resultStatus(row)}</td>
                     </tr>
                   ))}
                 </tbody>

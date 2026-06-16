@@ -2,6 +2,7 @@ import { getLikelyRetirements, getSeasonAwards, isSeasonComplete } from "@/lib/s
 import { createNewSave } from "@/lib/sim/factory";
 import { finalizeRaceWeekend, runSimulationTick } from "@/lib/sim/engine";
 import { getNewsFeed } from "@/lib/sim/news";
+import { recordOwnerConfidenceReview } from "@/lib/sim/ownerConfidence";
 import { startNextSeason } from "@/lib/sim/seasonRollover";
 import {
   AcademyViewRow,
@@ -10,6 +11,7 @@ import {
   getCalendarView,
   getDashboardSummary,
   getHistoryView,
+  getLatestConstructorDevelopmentReports,
   getRaceResultsView,
   getRosterView,
   getStandings,
@@ -30,7 +32,9 @@ import {
   GameActionResult,
   SaveData,
   SaveMetadata,
+  OwnerConfidenceReview,
   SeasonAwards,
+  ConstructorDevelopmentReport,
   TeamDecision,
   WeekendPlan,
 } from "@/types/sim";
@@ -208,6 +212,11 @@ class SimulationSessionService {
     return { ok: true, data: getHistoryView(this.activeSave) };
   }
 
+  getConstructorDevelopmentReports(): GameActionResult<ConstructorDevelopmentReport[]> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    return { ok: true, data: getLatestConstructorDevelopmentReports(this.activeSave) };
+  }
+
   submitPlayerDecision(decision: Omit<TeamDecision, "week" | "tick" | "source">): GameActionResult<void> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
 
@@ -382,6 +391,17 @@ class SimulationSessionService {
     return { ok: true, data: getLikelyRetirements(this.activeSave) };
   }
 
+  async getOwnerConfidenceReview(): Promise<GameActionResult<OwnerConfidenceReview>> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    if (!isSeasonComplete(this.activeSave)) {
+      return { ok: false, error: "Season is not complete yet." };
+    }
+    const review = recordOwnerConfidenceReview(this.activeSave);
+    const persisted = await this.persistActiveSave();
+    if (!persisted.ok) return persisted;
+    return { ok: true, data: review };
+  }
+
   getNewsFeed(limit = 50): GameActionResult<ReturnType<typeof getNewsFeed>> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
     return { ok: true, data: getNewsFeed(this.activeSave, limit) };
@@ -413,6 +433,10 @@ class SimulationSessionService {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
     if (!isSeasonComplete(this.activeSave)) {
       return { ok: false, error: "Season is not complete yet." };
+    }
+    const review = recordOwnerConfidenceReview(this.activeSave);
+    if (review.wasFired) {
+      return { ok: false, error: "The owners have ended your tenure. This career cannot advance to another season." };
     }
     this.activeSave = startNextSeason(this.activeSave);
     const persisted = await this.persistActiveSave();

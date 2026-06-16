@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ManagementFrame } from "@/components/management/ManagementFrame";
 import { simulationSession } from "@/lib/sim/session";
 import { getStandings } from "@/lib/sim/selectors";
-import { SeasonAwards } from "@/types/sim";
+import { ConstructorDevelopmentReport, SeasonAwards } from "@/types/sim";
 
 type RetirementRow = { driverId: string; name: string; teamId: string; age: number; overall: number };
 
@@ -15,7 +15,7 @@ function AwardCard({ title, recipient }: { title: string; recipient: { name: str
     return (
       <div className="rounded border border-zinc-700 bg-[#1b232e] p-4">
         <p className="text-xs uppercase tracking-wider text-zinc-500">{title}</p>
-        <p className="mt-1 text-zinc-500">—</p>
+        <p className="mt-1 text-zinc-500">-</p>
       </div>
     );
   }
@@ -28,42 +28,68 @@ function AwardCard({ title, recipient }: { title: string; recipient: { name: str
   );
 }
 
+function tierClass(tier: ConstructorDevelopmentReport["tier"]) {
+  if (tier === "breakthrough") return "border-emerald-600/60 bg-emerald-950/25 text-emerald-100";
+  if (tier === "gain") return "border-cyan-600/50 bg-cyan-950/20 text-cyan-100";
+  if (tier === "collapse") return "border-red-700/70 bg-red-950/25 text-red-100";
+  if (tier === "setback") return "border-orange-700/60 bg-orange-950/20 text-orange-100";
+  return "border-zinc-700 bg-[#1b232e] text-zinc-200";
+}
+
+function signed(value: number) {
+  return `${value >= 0 ? "+" : ""}${value}`;
+}
+
+function ConstructorWinterChanges({ reports }: { reports: ConstructorDevelopmentReport[] }) {
+  if (!reports.length) return null;
+
+  return (
+    <section>
+      <h3 className="mb-3 text-lg font-semibold">Constructor winter changes</h3>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {reports.map((report) => (
+          <article key={`${report.seasonYear}-${report.teamId}`} className={`rounded border p-4 ${tierClass(report.tier)}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{report.teamName}</p>
+                <p className="mt-1 text-xs uppercase tracking-wider opacity-75">{report.tier}</p>
+              </div>
+              <p className="text-right text-sm font-semibold">
+                Pace {signed(report.paceDelta)}
+                <br />
+                Rel {signed(report.reliabilityDelta)}
+              </p>
+            </div>
+            <p className="mt-3 text-sm opacity-90">{report.headline}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function SeasonReviewBody({ saveId }: { saveId: string }) {
-  const router = useRouter();
   const [awards, setAwards] = useState<SeasonAwards | null>(null);
   const [retirements, setRetirements] = useState<RetirementRow[]>([]);
   const [standings, setStandings] = useState<ReturnType<typeof getStandings> | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [constructorReports, setConstructorReports] = useState<ConstructorDevelopmentReport[]>([]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const a = simulationSession.getSeasonAwards();
       const r = simulationSession.getLikelyRetirements();
       const s = simulationSession.getStandings();
+      const c = simulationSession.getConstructorDevelopmentReports();
       if (a.ok) setAwards(a.data);
       if (r.ok) setRetirements(r.data);
       if (s.ok) setStandings(s.data);
+      if (c.ok) setConstructorReports(c.data);
     }, 0);
 
     return () => window.clearTimeout(timer);
   }, []);
 
-  const onStartNextSeason = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    const result = await simulationSession.startNextSeason();
-    setBusy(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    router.push(`/dashboard?saveId=${saveId}`);
-  }, [router, saveId]);
-
-  if (!awards) return <p className="text-zinc-400">Loading season review…</p>;
-
-  const nextYear = awards.seasonYear + 1;
+  if (!awards) return <p className="text-zinc-400">Loading season review...</p>;
 
   return (
     <div className="space-y-6">
@@ -82,6 +108,8 @@ function SeasonReviewBody({ saveId }: { saveId: string }) {
           </div>
         </div>
       </section>
+
+      <ConstructorWinterChanges reports={constructorReports} />
 
       <section>
         <h3 className="mb-3 text-lg font-semibold">Season Awards</h3>
@@ -109,7 +137,7 @@ function SeasonReviewBody({ saveId }: { saveId: string }) {
           <ul className="space-y-1 text-sm text-zinc-300">
             {retirements.map((d) => (
               <li key={d.driverId}>
-                {d.name} — age {d.age}, overall {d.overall}
+                {d.name} - age {d.age}, overall {d.overall}
               </li>
             ))}
           </ul>
@@ -123,7 +151,7 @@ function SeasonReviewBody({ saveId }: { saveId: string }) {
             <ol className="space-y-1 text-sm text-zinc-300">
               {standings.drivers.slice(0, 10).map((d, i) => (
                 <li key={d.driverId}>
-                  {i + 1}. {d.name} ({d.teamAbbreviation}) — {d.points} pts
+                  {i + 1}. {d.name} ({d.teamAbbreviation}) - {d.points} pts
                 </li>
               ))}
             </ol>
@@ -133,7 +161,7 @@ function SeasonReviewBody({ saveId }: { saveId: string }) {
             <ol className="space-y-1 text-sm text-zinc-300">
               {standings.constructors.map((t, i) => (
                 <li key={t.teamId}>
-                  {i + 1}. {t.name} — {t.points} pts
+                  {i + 1}. {t.name} - {t.points} pts
                 </li>
               ))}
             </ol>
@@ -142,18 +170,15 @@ function SeasonReviewBody({ saveId }: { saveId: string }) {
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={onStartNextSeason}
-          disabled={busy}
-          className="ui-interactive rounded bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+        <Link
+          href={`/owner-confidence?saveId=${saveId}`}
+          className="ui-interactive rounded bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"
         >
-          Start {nextYear} season
-        </button>
+          Continue to board review
+        </Link>
         <Link href={`/dashboard?saveId=${saveId}`} className="ui-interactive rounded border border-zinc-600 px-4 py-2 text-sm text-zinc-200">
           Back to dashboard
         </Link>
-        {error ? <p className="text-sm text-red-300">{error}</p> : null}
       </div>
     </div>
   );

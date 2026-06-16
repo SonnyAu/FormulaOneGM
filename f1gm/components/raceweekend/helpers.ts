@@ -1,4 +1,4 @@
-import { RaceEntry, TireCompound } from "@/lib/sim/raceweekend/raceTypes";
+import { RaceEntry, RaceIssueKind, RacePenaltyKind, TireCompound } from "@/lib/sim/raceweekend/raceTypes";
 
 export type EntryView = {
   driverId: string;
@@ -47,6 +47,36 @@ export function compoundBadgeClass(compound: TireCompound): string {
       return "border-blue-400 text-blue-200";
     default:
       return "border-zinc-500 text-zinc-200";
+  }
+}
+
+export function issueLabel(kind: RaceIssueKind): string {
+  switch (kind) {
+    case "power-loss":
+      return "Power loss";
+    case "cooling":
+      return "Cooling";
+    case "gearbox":
+      return "Gearbox";
+    case "lock-up":
+      return "Lock-up";
+    case "wide-moment":
+      return "Wide";
+    default:
+      return "Issue";
+  }
+}
+
+export function penaltyLabel(kind: RacePenaltyKind): string {
+  switch (kind) {
+    case "track-limits":
+      return "Track limits";
+    case "unsafe-defending":
+      return "Unsafe defending";
+    case "pit-lane-speeding":
+      return "Pit speeding";
+    default:
+      return "Penalty";
   }
 }
 

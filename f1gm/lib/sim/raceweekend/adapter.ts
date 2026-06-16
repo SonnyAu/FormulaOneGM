@@ -154,6 +154,8 @@ export function applyRaceWeekendResult(season: SeasonState, weekend: RaceWeekend
       position: row.position,
       points: row.points,
       dnf: row.dnf,
+      penaltySeconds: row.penaltySeconds,
+      issueCount: row.issueCount,
       hasFastestLap: row.hasFastestLap,
     });
 

@@ -1,10 +1,21 @@
 import { RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
-import { COMPOUND_LABEL, compoundBadgeClass, EntryView, formatGap } from "@/components/raceweekend/helpers";
+import { COMPOUND_LABEL, compoundBadgeClass, EntryView, formatGap, issueLabel } from "@/components/raceweekend/helpers";
 
 type LeaderboardProps = {
   weekend: RaceWeekendState;
   entryMap: Record<string, EntryView>;
 };
+
+function statusText(driver: NonNullable<RaceWeekendState["race"]>["drivers"][number]): string {
+  if (driver.dnf) return driver.dnfReason ? `Retired: ${driver.dnfReason}` : "Retired";
+
+  const notes: string[] = [];
+  if (driver.activeIssue) notes.push(issueLabel(driver.activeIssue.kind));
+  if (driver.penaltySeconds > 0) notes.push(`+${driver.penaltySeconds}s pen`);
+  if (driver.issueCount > 0 && !driver.activeIssue) notes.push(`${driver.issueCount} issue${driver.issueCount === 1 ? "" : "s"}`);
+
+  return notes.length ? notes.join(" | ") : "Clean";
+}
 
 export function Leaderboard({ weekend, entryMap }: LeaderboardProps) {
   const race = weekend.race;
@@ -26,6 +37,7 @@ export function Leaderboard({ weekend, entryMap }: LeaderboardProps) {
               <th className="pb-1 text-right">Stops</th>
               <th className="pb-1 text-right">Gap</th>
               <th className="pb-1 text-right">Pace</th>
+              <th className="pb-1 text-right">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -60,6 +72,7 @@ export function Leaderboard({ weekend, entryMap }: LeaderboardProps) {
                     {driver.dnf ? "—" : driver.position === 1 ? "Leader" : formatGap(driver.gapToLeaderSeconds)}
                   </td>
                   <td className="border-t border-zinc-800 py-1.5 text-right text-xs">{driver.paceMode}</td>
+                  <td className="border-t border-zinc-800 py-1.5 text-right text-xs">{statusText(driver)}</td>
                 </tr>
               );
             })}

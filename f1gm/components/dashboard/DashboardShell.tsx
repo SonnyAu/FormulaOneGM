@@ -23,7 +23,9 @@ export function DashboardShell({ title, subtitle, sidebar, children }: Dashboard
             >
               ☰
             </button>
-            <p className="font-semibold text-zinc-100">🏁 FormulaOneGM</p>
+            <Link href="/" className="ui-interactive font-semibold text-zinc-100 hover:text-white">
+              🏁 FormulaOneGM
+            </Link>
             <PlayDropdown />
             <span className="hidden text-sm text-zinc-300 md:block">{subtitle}</span>
           </div>

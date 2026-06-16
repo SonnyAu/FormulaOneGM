@@ -77,6 +77,8 @@ export function logRaceWeekend(weekend: RaceWeekendState): void {
   for (const row of weekend.result?.classification ?? []) {
     const pos = row.dnf ? "DNF" : `P${row.position}`;
     const fl = row.hasFastestLap ? " [FL]" : "";
-    console.log(`  ${pos.padEnd(4)} ${(names[row.driverId] ?? row.driverId).padEnd(22)} ${row.points} pts${fl}`);
+    const penalty = row.penaltySeconds > 0 ? ` +${row.penaltySeconds}s pen` : "";
+    const issues = row.issueCount > 0 ? ` ${row.issueCount} issue${row.issueCount === 1 ? "" : "s"}` : "";
+    console.log(`  ${pos.padEnd(4)} ${(names[row.driverId] ?? row.driverId).padEnd(22)} ${row.points} pts${fl}${penalty}${issues}`);
   }
 }

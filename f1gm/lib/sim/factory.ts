@@ -1,4 +1,5 @@
 import { teams } from "@/data/teams";
+import { createInitialJobSecurityState } from "@/lib/sim/ownerConfidence";
 import { buildInitialAcademy, buildRosterFromTeams } from "@/lib/sim/roster";
 import { TeamSelection } from "@/types/f1";
 import {
@@ -172,11 +173,13 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
     decisionHistory: [],
     raceHistory: [],
     archive: [] as HistoricalArchiveRecord[],
+    constructorDevelopmentHistory: [],
     driverStandings: {},
     activeRaceWeekend: null,
     pendingWeekendPlan: null,
     roster,
     academy,
+    jobSecurity: createInitialJobSecurityState(playerTeamId),
     eventLog: [
       {
         id: `${id}-start`,

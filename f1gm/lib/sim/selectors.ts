@@ -10,6 +10,7 @@ import { recommendWeekendPlan } from "@/lib/sim/subsystems/weekendPlan";
 import { CarProfile } from "@/lib/sim/raceweekend/raceTypes";
 import {
   CalendarEvent,
+  ConstructorDevelopmentReport,
   DashboardSummary,
   HistoricalArchiveRecord,
   RaceResult,
@@ -109,6 +110,24 @@ export function getWeekendPlanRecommendation(save: SaveData): { plan: WeekendPla
   return recommendWeekendPlan(team, save.season);
 }
 
+export function getLatestConstructorDevelopmentReports(save: SaveData): ConstructorDevelopmentReport[] {
+  const reports = save.season.constructorDevelopmentHistory ?? [];
+  const latestYear = reports.reduce((year, report) => Math.max(year, report.seasonYear), 0);
+  if (!latestYear) return [];
+
+  const tierRank: Record<ConstructorDevelopmentReport["tier"], number> = {
+    breakthrough: 0,
+    gain: 1,
+    stable: 2,
+    setback: 3,
+    collapse: 4,
+  };
+
+  return reports
+    .filter((report) => report.seasonYear === latestYear)
+    .sort((a, b) => tierRank[a.tier] - tierRank[b.tier] || b.paceDelta - a.paceDelta || a.teamName.localeCompare(b.teamName));
+}
+
 export type CalendarRow = CalendarEvent & { completed: boolean; isNext: boolean };
 
 export function getCalendarView(save: SaveData): CalendarRow[] {
@@ -198,7 +217,17 @@ export function getStandings(save: SaveData): { constructors: ConstructorStandin
   return { constructors, drivers };
 }
 
-export type RaceResultDriverRow = { driverId: string; name: string; teamAbbreviation: string; position: number; points: number; dnf: boolean; hasFastestLap: boolean };
+export type RaceResultDriverRow = {
+  driverId: string;
+  name: string;
+  teamAbbreviation: string;
+  position: number;
+  points: number;
+  dnf: boolean;
+  penaltySeconds: number;
+  issueCount: number;
+  hasFastestLap: boolean;
+};
 export type RaceResultRow = {
   round: number;
   raceName: string;
@@ -227,6 +256,8 @@ function buildRaceResultRows(save: SaveData, raceResults: RaceResult[]): RaceRes
                 position: row.position,
                 points: row.points,
                 dnf: row.dnf,
+                penaltySeconds: row.penaltySeconds,
+                issueCount: row.issueCount,
                 hasFastestLap: row.hasFastestLap,
               };
             })

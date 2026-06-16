@@ -190,6 +190,15 @@ function RaceControls({
   );
 }
 
+function resultStatus(row: NonNullable<RaceWeekendState["result"]>["classification"][number]): string {
+  if (row.dnf) return "Retired";
+
+  const notes = ["Finished"];
+  if (row.penaltySeconds > 0) notes.push(`+${row.penaltySeconds}s penalty`);
+  if (row.issueCount > 0) notes.push(`${row.issueCount} issue${row.issueCount === 1 ? "" : "s"}`);
+  return notes.join(" | ");
+}
+
 function PracticePanel({
   weekend,
   entryMap,
@@ -281,7 +290,7 @@ function ResultsPanel({
                   {row.hasFastestLap ? <span className="ml-1 text-xs text-purple-300">FL</span> : null}
                 </td>
                 <td className="border-t border-zinc-800 py-1.5 text-right">{row.points}</td>
-                <td className="border-t border-zinc-800 py-1.5 text-right text-xs">{row.dnf ? "Retired" : "Finished"}</td>
+                <td className="border-t border-zinc-800 py-1.5 text-right text-xs">{resultStatus(row)}</td>
               </tr>
             ))}
           </tbody>

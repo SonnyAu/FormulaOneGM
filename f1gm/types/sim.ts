@@ -1,6 +1,6 @@
 import type { DriverProfile, RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
 
-export const SAVE_SCHEMA_VERSION = 6;
+export const SAVE_SCHEMA_VERSION = 9;
 
 export type SaveDifficulty = "easy" | "standard" | "hard";
 
@@ -34,6 +34,52 @@ export type CalendarEvent = {
 };
 
 export type TeamType = "works" | "customer";
+
+export type OwnerRiskTier = "secure" | "watched" | "at-risk" | "final-warning";
+
+export type OwnerWarningLevel = "none" | "watched" | "at-risk" | "final-warning" | "fired";
+
+export type OwnerConfidenceReason = {
+  label: string;
+  detail: string;
+  tone: "good" | "neutral" | "bad";
+};
+
+export type OwnerConfidenceReview = {
+  seasonYear: number;
+  teamId: string;
+  teamName: string;
+  confidenceScore: number;
+  previousConfidenceScore: number;
+  riskTier: OwnerRiskTier;
+  warningLevel: OwnerWarningLevel;
+  consecutiveLowConfidenceSeasons: number;
+  wasFired: boolean;
+  expectationProfile: {
+    prestigeRating: number;
+    roleAwareRating: number;
+    roleLabel: string;
+    expectedConstructorPosition: number;
+    minimumAcceptablePosition: number;
+  };
+  seasonResult: {
+    constructorPosition: number;
+    constructorCount: number;
+    points: number;
+    wins: number;
+    podiums: number;
+    budget: number;
+    budgetDelta: number;
+  };
+  reasons: OwnerConfidenceReason[];
+};
+
+export type JobSecurityState = {
+  confidenceScore: number;
+  warningLevel: OwnerWarningLevel;
+  consecutiveLowConfidenceSeasons: number;
+  lastReview: OwnerConfidenceReview | null;
+};
 
 export type TeamDecision = {
   teamId: string;
@@ -125,6 +171,8 @@ export type DriverRaceResult = {
   position: number;
   points: number;
   dnf: boolean;
+  penaltySeconds: number;
+  issueCount: number;
   hasFastestLap: boolean;
 };
 
@@ -237,6 +285,21 @@ export type TeamSnapshot = {
   points: number;
 };
 
+export type ConstructorDevelopmentTier = "breakthrough" | "gain" | "stable" | "setback" | "collapse";
+
+export type ConstructorDevelopmentReport = {
+  seasonYear: number;
+  teamId: string;
+  teamName: string;
+  paceDelta: number;
+  efficiencyDelta: number;
+  reliabilityDelta: number;
+  staffDelta: number;
+  facilityDelta: number;
+  tier: ConstructorDevelopmentTier;
+  headline: string;
+};
+
 export type HistoricalArchiveRecord = {
   seasonYear: number;
   raceResults: RaceResult[];
@@ -257,6 +320,7 @@ export type SeasonState = {
   decisionHistory: TeamDecision[];
   raceHistory: RaceResult[];
   archive: HistoricalArchiveRecord[];
+  constructorDevelopmentHistory: ConstructorDevelopmentReport[];
   eventLog: EventLogEntry[];
   /** World Drivers' Championship points by driver id. */
   driverStandings: Record<string, DriverChampionshipEntry>;
@@ -267,6 +331,7 @@ export type SeasonState = {
   /** Per-save driver lineups and live ratings. */
   roster: Record<string, DriverSeasonInfo>;
   academy: AcademyState;
+  jobSecurity: JobSecurityState;
 };
 
 export type SaveData = {

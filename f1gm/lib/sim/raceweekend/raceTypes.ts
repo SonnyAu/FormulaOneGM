@@ -9,6 +9,10 @@ export type SessionPhase = "practice" | "qualifying" | "race" | "complete";
 
 export type StrategyPersonality = "AGGRESSIVE" | "BALANCED" | "CONSERVATIVE" | "GAMBLER";
 
+export type RaceIssueKind = "power-loss" | "cooling" | "gearbox" | "lock-up" | "wide-moment";
+
+export type RacePenaltyKind = "track-limits" | "unsafe-defending" | "pit-lane-speeding";
+
 /** Serializable RNG state. Advanced in place by helpers in rng.ts. */
 export type RngState = {
   seed: number;
@@ -115,6 +119,22 @@ export type TireState = {
   health: number;
 };
 
+export type RaceIssue = {
+  kind: RaceIssueKind;
+  lapStarted: number;
+  lapsRemaining: number;
+  timeLossSecondsPerLap: number;
+  tireWearAdded: number;
+  detail: string;
+};
+
+export type RacePenalty = {
+  kind: RacePenaltyKind;
+  lap: number;
+  seconds: number;
+  detail: string;
+};
+
 // --- Per-driver race state ------------------------------------------------
 
 export type DriverRaceState = {
@@ -136,6 +156,11 @@ export type DriverRaceState = {
   inPit: boolean;
   /** Requested by player/AI; consumed at the next pit-window evaluation. */
   pendingPitCompound: TireCompound | null;
+  activeIssue: RaceIssue | null;
+  issueCount: number;
+  issueCooldownLaps: number;
+  penaltySeconds: number;
+  penalties: RacePenalty[];
   dnf: boolean;
   dnfReason: string | null;
   hasFastestLap: boolean;
@@ -171,6 +196,9 @@ export type RaceEventType =
   | "safety-car-end"
   | "fastest-lap"
   | "lead-change"
+  | "race-issue"
+  | "issue-resolved"
+  | "penalty"
   | "dnf"
   | "race-end";
 
@@ -182,6 +210,9 @@ export type RaceEvent = {
   /** Secondary subject (rival) where relevant. */
   rivalId?: string;
   compound?: TireCompound;
+  issueKind?: RaceIssueKind;
+  penaltyKind?: RacePenaltyKind;
+  penaltySeconds?: number;
   stopTimeSeconds?: number;
   timeSeconds?: number;
   detail?: string;
@@ -266,6 +297,8 @@ export type RaceClassificationRow = {
   totalTimeSeconds: number;
   lapsCompleted: number;
   dnf: boolean;
+  penaltySeconds: number;
+  issueCount: number;
   points: number;
   hasFastestLap: boolean;
 };
