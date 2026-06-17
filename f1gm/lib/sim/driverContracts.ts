@@ -1,4 +1,5 @@
 import { buildDriverSeasonInfo } from "@/lib/sim/roster";
+import { getTeamExpectationProfile } from "@/lib/sim/ownerConfidence";
 import type {
   DriverContract,
   DriverLineupRole,
@@ -209,6 +210,73 @@ function recentInvestmentScore(season: SeasonState, teamId: string): number {
   return clamp(Math.round((averageSpend - 1_400_000) / 180_000), -8, 10);
 }
 
+export type DriverOfferPreview = {
+  accepted: boolean;
+  label: "likely" | "uncertain" | "unlikely" | "refused";
+  reason: string;
+  score: number;
+  factors: DriverMoodFactor[];
+};
+
+function evaluateOfferTerms(
+  driver: { age: number },
+  offer: DriverOffer,
+  expectedSalary: number,
+): { salaryDelta: number; lengthDelta: number; factors: DriverMoodFactor[] } {
+  const salaryRatio = offer.salary / Math.max(1, expectedSalary);
+  const salaryDelta = (salaryRatio - 1) * 78;
+
+  let lengthDelta = 0;
+  let lengthDetail = "";
+  if (driver.age <= 24) {
+    if (offer.years >= 3) {
+      lengthDelta = 10;
+      lengthDetail = "A long deal offers security early in their career.";
+    } else if (offer.years >= 2) {
+      lengthDelta = 6;
+      lengthDetail = "A multi-year deal is attractive.";
+    } else {
+      lengthDelta = -4;
+      lengthDetail = "A one-year deal feels short for a young driver.";
+    }
+  } else if (driver.age >= 36) {
+    if (offer.years <= 2) {
+      lengthDelta = 8;
+      lengthDetail = "A shorter commitment suits a veteran driver.";
+    } else if (offer.years === 3) {
+      lengthDelta = 2;
+      lengthDetail = "Three years is acceptable, but not ideal.";
+    } else {
+      lengthDelta = -6;
+      lengthDetail = "A four- or five-year deal is too long at this stage.";
+    }
+  } else if (offer.years >= 3) {
+    lengthDelta = 9;
+    lengthDetail = "A three-year deal provides stability.";
+  } else if (offer.years >= 2) {
+    lengthDelta = 5;
+    lengthDetail = "A two-year deal is reasonable.";
+  } else {
+    lengthDelta = -5;
+    lengthDetail = "A one-year deal signals little long-term commitment.";
+  }
+
+  const factors: DriverMoodFactor[] = [
+    factor(
+      "Salary offer",
+      salaryRatio >= 1.35
+        ? `${Math.round(salaryRatio * 100)}% of expected — a strong package.`
+        : salaryRatio >= 1
+          ? `${Math.round(salaryRatio * 100)}% of expected salary.`
+          : `${Math.round(salaryRatio * 100)}% of expected — below the asking rate.`,
+      Math.round(salaryDelta),
+    ),
+    factor("Contract length", `${offer.years} year${offer.years === 1 ? "" : "s"}. ${lengthDetail}`, Math.round(lengthDelta)),
+  ];
+
+  return { salaryDelta, lengthDelta, factors };
+}
+
 export function evaluateDriverMood(save: SaveData, driverId: string, targetTeamId: string): DriverMood {
   const season = save.season;
   const driver = season.roster[driverId];
@@ -218,15 +286,23 @@ export function evaluateDriverMood(save: SaveData, driverId: string, targetTeamI
   }
 
   const position = constructorPosition(season, targetTeamId);
+  const teamProfile = getTeamExpectationProfile(targetTeamId, season);
   const carAverage = Math.round((team.car.pace + team.car.efficiency + team.car.reliability) / 3);
   const investment = recentInvestmentScore(season, targetTeamId);
   const factors: DriverMoodFactor[] = [];
 
   factors.push(
     factor(
+      "Team prestige",
+      `${teamProfile.roleLabel} (${teamProfile.prestigeRating}/100).`,
+      clamp(Math.round((teamProfile.prestigeRating - 58) / 4), -8, 12),
+    ),
+  );
+  factors.push(
+    factor(
       "Team performance",
-      `Constructor position P${position}.`,
-      clamp(14 - position * 2, -10, 12),
+      `Constructor position P${position} (expected P${teamProfile.expectedConstructorPosition}).`,
+      clamp(14 - position * 2 + (teamProfile.expectedConstructorPosition - position), -10, 14),
     ),
   );
   factors.push(
@@ -281,26 +357,38 @@ export function expectedSalaryForOffer(save: SaveData, driverId: string, targetT
   return Math.round(base * moodPremium * prestigePremium);
 }
 
-export function driverOfferAcceptance(save: SaveData, driverId: string, targetTeamId: string, offer: DriverOffer) {
+export function driverOfferAcceptance(save: SaveData, driverId: string, targetTeamId: string, offer: DriverOffer): DriverOfferPreview {
   const driver = save.season.roster[driverId];
-  if (!driver) return { accepted: false, label: "refused" as const, reason: "Driver not found." };
+  if (!driver) {
+    return { accepted: false, label: "refused", reason: "Driver not found.", score: 0, factors: [] };
+  }
   const mood = evaluateDriverMood(save, driverId, targetTeamId);
   const expected = expectedSalaryForOffer(save, driverId, targetTeamId, offer.role);
-  const lengthFit =
-    driver.age >= 36 ? (offer.years <= 2 ? 1.02 : 0.92) : driver.age <= 24 ? (offer.years >= 2 ? 1.04 : 0.94) : 1;
+  const { salaryDelta, lengthDelta, factors: offerFactors } = evaluateOfferTerms(driver, offer, expected);
   const salaryRatio = offer.salary / Math.max(1, expected);
-  const score = mood.score + (salaryRatio - 1) * 52 + (lengthFit - 1) * 60;
+  const score = mood.score + salaryDelta + lengthDelta;
+  const factors = [...offerFactors];
 
-  if (mood.score < 24 && salaryRatio < 2.25) {
-    return { accepted: false, label: "refused" as const, reason: "Mood is too low for a realistic offer." };
+  const moodGateThreshold = mood.score < 24 ? 2.1 : mood.score < 32 ? 1.45 : 0;
+  if (moodGateThreshold > 0 && salaryRatio < moodGateThreshold && score < 48) {
+    return {
+      accepted: false,
+      label: "refused",
+      reason: "The offer is not generous enough to overcome the driver's doubts about the seat.",
+      score: Math.round(score),
+      factors,
+    };
   }
-  if (mood.score < 28 && salaryRatio < 1.55) {
-    return { accepted: false, label: "refused" as const, reason: "Mood is too low for a realistic offer." };
+  if (score >= 62) {
+    return { accepted: true, label: "likely", reason: "Offer meets the driver's expectations.", score: Math.round(score), factors };
   }
-  if (score >= 62) return { accepted: true, label: "likely" as const, reason: "Offer meets the driver's expectations." };
-  if (score >= 50) return { accepted: true, label: "uncertain" as const, reason: "The offer is just good enough." };
-  if (score >= 38) return { accepted: false, label: "unlikely" as const, reason: "The offer is below expectations." };
-  return { accepted: false, label: "refused" as const, reason: "The driver is not interested in that package." };
+  if (score >= 50) {
+    return { accepted: true, label: "uncertain", reason: "The offer is just good enough.", score: Math.round(score), factors };
+  }
+  if (score >= 38) {
+    return { accepted: false, label: "unlikely", reason: "The offer is below expectations.", score: Math.round(score), factors };
+  }
+  return { accepted: false, label: "refused", reason: "The driver is not interested in that package.", score: Math.round(score), factors };
 }
 
 export function optimalDriverOffer(
@@ -386,7 +474,7 @@ function toMarketRow(save: SaveData, driverId: string, targetTeamId: string, rol
   const optimalOffer = optimalDriverOffer(save, driverId, targetTeamId, role);
   const contract = activeDriverContract(save.season, driverId);
   const currentTeam = save.season.teams[driver.teamId];
-  const salaryOptions = [0.85, 1, 1.15, 1.35, 1.6].map((multiplier) => Math.round(expectedSalary * multiplier));
+  const salaryOptions = [0.85, 1, 1.15, 1.35, 1.6, 1.85, 2.25].map((multiplier) => Math.round(expectedSalary * multiplier));
   return {
     driverId,
     name: driver.name,

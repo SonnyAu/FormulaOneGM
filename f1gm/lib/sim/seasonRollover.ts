@@ -3,6 +3,7 @@ import { applyOffseasonConstructorDevelopment } from "@/lib/sim/constructorDevel
 import { autoProcessAiDriverContracts, ensureDriverContractState } from "@/lib/sim/driverContracts";
 import { resetOffseasonForNewSeason } from "@/lib/sim/offseason";
 import { applyPowerUnitOffseason } from "@/lib/sim/powerUnits";
+import { updateTeamExpectations } from "@/lib/sim/ownerConfidence";
 import { autoProcessAiSponsors, ensureSponsorState, syncTeamSponsorState } from "@/lib/sim/sponsors";
 import { getSeasonAwards, getSeasonChampions } from "@/lib/sim/awards";
 import {
@@ -57,6 +58,7 @@ export function startNextSeason(save: SaveData): SaveData {
 
   ensureSponsorState(next);
   ensureDriverContractState(next);
+  updateTeamExpectations(next);
   season.eventLog.push(...autoProcessAiDriverContracts(next));
   season.eventLog.push(...autoProcessAiSponsors(next));
 

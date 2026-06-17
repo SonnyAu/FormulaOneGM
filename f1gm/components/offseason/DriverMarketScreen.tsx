@@ -131,6 +131,16 @@ function NegotiationModal({
             {preview?.label ?? "Unavailable"}
           </p>
           <p className="mt-1 text-zinc-400">{preview?.reason ?? "No preview available."}</p>
+          {preview ? <p className="mt-1 text-xs text-zinc-500">Conviction score: {preview.score}/100</p> : null}
+          {preview?.factors.length ? (
+            <div className="mt-3 space-y-1 border-t border-zinc-700 pt-2 text-xs text-zinc-400">
+              {preview.factors.map((item) => (
+                <p key={item.label}>
+                  {item.label}: {item.delta >= 0 ? "+" : ""}{item.delta} | {item.detail}
+                </p>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {message ? <p className="mt-3 text-sm text-red-300">{message}</p> : null}

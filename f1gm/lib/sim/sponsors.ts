@@ -1,5 +1,5 @@
 import { teams as teamSeeds } from "@/data/teams";
-import { getTeamExpectationProfile } from "@/lib/sim/ownerConfidence";
+import { ensureTeamExpectations, getTeamExpectationProfile, teamStrictestSponsorPosition } from "@/lib/sim/ownerConfidence";
 import type { SponsorAmbition, SponsorCategory, Team, TeamSponsorSeed } from "@/types/f1";
 import type {
   EventLogEntry,
@@ -7,8 +7,19 @@ import type {
   SeasonState,
   SponsorContract,
   SponsorRenewalTarget,
+  TeamExpectationProfile,
   TeamState,
 } from "@/types/sim";
+
+export const SPONSOR_MIN_TERM_YEARS = 3;
+export const SPONSOR_MAX_TERM_YEARS = 5;
+
+export type SponsorDealPreview = {
+  target: SponsorRenewalTarget;
+  termYears: number;
+  teamAnchor: number;
+  prestigeCap: number;
+};
 
 const CATEGORY_TARGET_OFFSET: Record<SponsorCategory, number> = {
   title: 0,
@@ -35,6 +46,18 @@ const GENERIC_SPONSORS: TeamSponsorSeed[] = [
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+export function clampSponsorTermYears(termYears: number): number {
+  return clamp(termYears, SPONSOR_MIN_TERM_YEARS, SPONSOR_MAX_TERM_YEARS);
+}
+
+function inferredTermYears(contract: SponsorContract): number {
+  return Math.max(1, contract.endSeason - contract.startSeason + 1);
+}
+
+function profileForTeam(season: Pick<SeasonState, "teams">, teamId: string): TeamExpectationProfile {
+  return getTeamExpectationProfile(teamId, season);
 }
 
 function contractId(teamId: string, sponsorId: string, startSeason: number): string {
@@ -124,34 +147,104 @@ export function buildSponsorRenewalTarget(
   teamId: string,
   sponsor: TeamSponsorSeed,
   season: Pick<SeasonState, "teams">,
+  termYears = SPONSOR_MIN_TERM_YEARS,
 ): SponsorRenewalTarget {
   const teamCount = Math.max(1, Object.keys(season.teams).length || 11);
-  const profile = getTeamExpectationProfile(teamId);
+  const profile = profileForTeam(season, teamId);
   const ambition = sponsor.ambition ?? "medium";
-  const minimumConstructorPosition = clamp(
-    profile.expectedConstructorPosition + CATEGORY_TARGET_OFFSET[sponsor.category] + AMBITION_TARGET_OFFSET[ambition],
-    1,
-    teamCount,
-  );
+  const term = clampSponsorTermYears(termYears);
+  const termStrictness = term - SPONSOR_MIN_TERM_YEARS;
+
+  const rawPosition =
+    profile.expectedConstructorPosition +
+    CATEGORY_TARGET_OFFSET[sponsor.category] +
+    AMBITION_TARGET_OFFSET[ambition] -
+    termStrictness;
+
+  const prestigeCap = teamStrictestSponsorPosition(profile, teamCount);
+  const minimumConstructorPosition = clamp(rawPosition, prestigeCap, teamCount);
+
   const target: SponsorRenewalTarget = {
     minimumConstructorPosition,
     description: `Finish P${minimumConstructorPosition} or better in the Constructors' Championship.`,
   };
 
-  if ((sponsor.category === "title" || sponsor.category === "major") && sponsor.annualValue >= 70_000_000) {
+  const canDemandPoints =
+    (sponsor.category === "title" || sponsor.category === "major") &&
+    sponsor.annualValue >= 70_000_000 &&
+    profile.prestigeRating >= 62 &&
+    minimumConstructorPosition <= 6;
+
+  if (canDemandPoints) {
     target.minimumPoints = Math.max(20, Math.round((teamCount - minimumConstructorPosition + 1) * 24));
     target.description += ` Score at least ${target.minimumPoints} points.`;
   }
-  if (ambition === "elite" && minimumConstructorPosition <= 3) {
+
+  const canDemandPodiums =
+    ambition === "elite" &&
+    minimumConstructorPosition <= 3 &&
+    profile.prestigeRating >= 78 &&
+    profile.roleAwareRating >= 72;
+
+  if (canDemandPodiums) {
     target.minimumPodiums = sponsor.category === "title" ? 2 : 1;
     target.description += ` Reach ${target.minimumPodiums} podium${target.minimumPodiums === 1 ? "" : "s"}.`;
   }
-  if (ambition === "elite" && minimumConstructorPosition <= 2 && sponsor.category === "title") {
+
+  const canDemandWins =
+    ambition === "elite" &&
+    minimumConstructorPosition <= 2 &&
+    sponsor.category === "title" &&
+    profile.prestigeRating >= 88 &&
+    profile.roleAwareRating >= 85;
+
+  if (canDemandWins) {
     target.minimumWins = 1;
     target.description += " Win at least once.";
   }
 
+  if (term > SPONSOR_MIN_TERM_YEARS) {
+    target.description += ` ${term}-year commitment raises expectations.`;
+  }
+
   return target;
+}
+
+export function previewSponsorDeal(
+  save: SaveData,
+  teamId: string,
+  sponsor: TeamSponsorSeed,
+  termYears = SPONSOR_MIN_TERM_YEARS,
+): SponsorDealPreview {
+  ensureTeamExpectations(save);
+  const season = save.season;
+  const profile = profileForTeam(season, teamId);
+  const teamCount = Math.max(1, Object.keys(season.teams).length || 11);
+  const term = clampSponsorTermYears(termYears);
+  return {
+    target: buildSponsorRenewalTarget(teamId, sponsor, season, term),
+    termYears: term,
+    teamAnchor: profile.expectedConstructorPosition,
+    prestigeCap: teamStrictestSponsorPosition(profile, teamCount),
+  };
+}
+
+export function previewSponsorRenewal(
+  save: SaveData,
+  teamId: string,
+  contract: SponsorContract,
+  termYears = SPONSOR_MIN_TERM_YEARS,
+): SponsorDealPreview {
+  const seed: TeamSponsorSeed = {
+    sponsorId: contract.sponsorId,
+    name: contract.name,
+    titleName: contract.titleName,
+    category: contract.category,
+    annualValue: Math.round(contract.annualValue * 1.04),
+    ambition: contract.ambition,
+    namingPartner: contract.namingPartner,
+  };
+  return previewSponsorDeal(save, teamId, seed, termYears);
 }
 
 export function createSponsorContract(
@@ -159,8 +252,9 @@ export function createSponsorContract(
   sponsor: TeamSponsorSeed,
   season: Pick<SeasonState, "seasonYear" | "teams">,
   startSeason = season.seasonYear,
-  termYears = sponsor.termYears ?? 1,
+  termYears = sponsor.termYears ?? SPONSOR_MIN_TERM_YEARS,
 ): SponsorContract {
+  const term = clampSponsorTermYears(termYears);
   return {
     id: contractId(teamId, sponsor.sponsorId, startSeason),
     sponsorId: sponsor.sponsorId,
@@ -170,9 +264,9 @@ export function createSponsorContract(
     category: sponsor.category,
     annualValue: sponsor.annualValue,
     startSeason,
-    endSeason: startSeason + Math.max(1, termYears) - 1,
+    endSeason: startSeason + term - 1,
     confidence: 62,
-    renewalTarget: buildSponsorRenewalTarget(teamId, sponsor, season),
+    renewalTarget: buildSponsorRenewalTarget(teamId, sponsor, season, term),
     ambition: sponsor.ambition ?? "medium",
     namingPartner: sponsor.namingPartner,
   };
@@ -192,7 +286,7 @@ export function buildInitialSponsorContracts(
   for (const teamId of teamIds) {
     const seed = teamSeed(teamId);
     if (!seed) continue;
-    contracts.push(...seed.sponsors.map((sponsor) => createSponsorContract(teamId, sponsor, seasonLike)));
+    contracts.push(...seed.sponsors.map((sponsor) => createSponsorContract(teamId, sponsor, seasonLike, seasonYear, SPONSOR_MIN_TERM_YEARS)));
   }
 
   if (customTeam) {
@@ -208,7 +302,7 @@ export function buildInitialSponsorContracts(
       { sponsorId: `${customTeam.teamId}-engineering`, name: "Apex Cloud", category: "technical", annualValue: 8_000_000 },
       { sponsorId: `${customTeam.teamId}-kit`, name: "Velocity Kit", category: "apparel", annualValue: 5_000_000 },
     ];
-    contracts.push(...customSponsors.map((sponsor) => createSponsorContract(customTeam.teamId, sponsor, seasonLike)));
+    contracts.push(...customSponsors.map((sponsor) => createSponsorContract(customTeam.teamId, sponsor, seasonLike, seasonYear, SPONSOR_MIN_TERM_YEARS)));
   }
 
   return contracts;
@@ -233,12 +327,30 @@ export function syncTeamSponsorState(season: SeasonState): void {
 
 export function ensureSponsorState(save: SaveData): void {
   const season = save.season;
+  ensureTeamExpectations(save);
   const teamIds = Object.keys(season.teams);
   if (!Array.isArray(season.sponsorContracts) || season.sponsorContracts.length === 0) {
     const customTeam = season.teams["custom-player-team"]
       ? { teamId: "custom-player-team", constructorName: season.teams["custom-player-team"].name }
       : undefined;
     season.sponsorContracts = buildInitialSponsorContracts(teamIds, season.seasonYear, customTeam);
+  }
+
+  for (const contract of season.sponsorContracts) {
+    if (contract.endSeason === contract.startSeason) {
+      contract.endSeason = contract.startSeason + SPONSOR_MIN_TERM_YEARS - 1;
+    }
+    const term = inferredTermYears(contract);
+    const seed: TeamSponsorSeed = {
+      sponsorId: contract.sponsorId,
+      name: contract.name,
+      titleName: contract.titleName,
+      category: contract.category,
+      annualValue: contract.annualValue,
+      ambition: contract.ambition,
+      namingPartner: contract.namingPartner,
+    };
+    contract.renewalTarget = buildSponsorRenewalTarget(contract.teamId, seed, season, term);
   }
 
   for (const team of Object.values(season.teams)) {
@@ -294,11 +406,55 @@ export function sponsorCatalog(): TeamSponsorSeed[] {
   });
 }
 
+const ALL_SPONSOR_CATEGORIES: SponsorCategory[] = ["title", "major", "technical", "apparel", "supplier"];
+
+export function contractCoversSeason(contract: SponsorContract, seasonYear: number): boolean {
+  return contract.startSeason <= seasonYear && contract.endSeason >= seasonYear;
+}
+
+export function leagueTakenSponsorIds(season: SeasonState, seasonYear: number): Set<string> {
+  const taken = new Set<string>();
+  for (const contract of season.sponsorContracts ?? []) {
+    if (contractCoversSeason(contract, seasonYear)) {
+      taken.add(contract.sponsorId);
+    }
+  }
+  return taken;
+}
+
+export function teamFilledCategories(season: SeasonState, teamId: string, seasonYear: number): Set<SponsorCategory> {
+  const filled = new Set<SponsorCategory>();
+  for (const contract of season.sponsorContracts ?? []) {
+    if (contract.teamId === teamId && contractCoversSeason(contract, seasonYear)) {
+      filled.add(contract.category);
+    }
+  }
+  return filled;
+}
+
+export function openTeamCategories(season: SeasonState, teamId: string, seasonYear: number): Set<SponsorCategory> {
+  const filled = teamFilledCategories(season, teamId, seasonYear);
+  return new Set(ALL_SPONSOR_CATEGORIES.filter((category) => !filled.has(category)));
+}
+
+export function teamSponsorSlotsFull(season: SeasonState, teamId: string, seasonYear: number): boolean {
+  return openTeamCategories(season, teamId, seasonYear).size === 0;
+}
+
+export function playerSponsorSlotsFull(season: SeasonState, teamId: string, seasonYear: number): boolean {
+  return teamSponsorSlotsFull(season, teamId, seasonYear);
+}
+
 export function availableSponsorMarket(season: SeasonState, teamId: string): TeamSponsorSeed[] {
-  const activeOrFuture = new Set(
-    [...activeSponsorContracts(season, teamId), ...futureSponsorContracts(season, teamId)].map((contract) => contract.sponsorId),
-  );
-  return sponsorCatalog().filter((sponsor) => !activeOrFuture.has(sponsor.sponsorId)).slice(0, 16);
+  const nextYear = season.seasonYear + 1;
+  const takenGlobally = leagueTakenSponsorIds(season, nextYear);
+  const openCategories = openTeamCategories(season, teamId, nextYear);
+
+  if (openCategories.size === 0) return [];
+
+  return sponsorCatalog()
+    .filter((sponsor) => !takenGlobally.has(sponsor.sponsorId) && openCategories.has(sponsor.category))
+    .slice(0, 16);
 }
 
 function hasFutureSponsor(season: SeasonState, teamId: string, sponsorId: string): boolean {
@@ -311,7 +467,7 @@ export function renewSponsorContract(
   save: SaveData,
   teamId: string,
   contractIdToRenew: string,
-  termYears = 1,
+  termYears = SPONSOR_MIN_TERM_YEARS,
 ): { ok: true; contract: SponsorContract } | { ok: false; error: string } {
   ensureSponsorState(save);
   const season = save.season;
@@ -325,17 +481,18 @@ export function renewSponsorContract(
     return { ok: false, error: "A future title sponsor is already signed." };
   }
 
+  const term = clampSponsorTermYears(termYears);
   const seed: TeamSponsorSeed = {
     sponsorId: existing.sponsorId,
     name: existing.name,
     titleName: existing.titleName,
     category: existing.category,
     annualValue: Math.round(existing.annualValue * 1.04),
-    termYears,
+    termYears: term,
     ambition: existing.ambition,
     namingPartner: existing.namingPartner,
   };
-  const contract = createSponsorContract(teamId, seed, season, season.seasonYear + 1, termYears);
+  const contract = createSponsorContract(teamId, seed, season, season.seasonYear + 1, term);
   contract.confidence = clamp(existing.confidence + 5, 0, 100);
   season.sponsorContracts.push(contract);
   season.eventLog.push(event(`${season.teams[teamId]?.abbreviation ?? teamId} renewed ${existing.name}.`, season, teamId));
@@ -347,26 +504,21 @@ export function signSponsorFromMarket(
   save: SaveData,
   teamId: string,
   sponsorId: string,
-  termYears = 1,
+  termYears = SPONSOR_MIN_TERM_YEARS,
 ): { ok: true; contract: SponsorContract } | { ok: false; error: string } {
   ensureSponsorState(save);
   const season = save.season;
-  const sponsor = sponsorCatalog().find((item) => item.sponsorId === sponsorId);
-  if (!sponsor) return { ok: false, error: "Sponsor is not available." };
-  if (hasFutureSponsor(season, teamId, sponsor.sponsorId)) return { ok: false, error: "A future deal with that sponsor already exists." };
+  const sponsor = availableSponsorMarket(season, teamId).find((item) => item.sponsorId === sponsorId);
+  if (!sponsor) return { ok: false, error: "Sponsor is not on the market." };
 
-  if (sponsor.category === "title") {
-    const futureTitle = futureSponsorContracts(season, teamId).find((contract) => contract.category === "title");
-    if (futureTitle) return { ok: false, error: "A future title sponsor is already signed." };
-  }
-
+  const term = clampSponsorTermYears(termYears);
   const valueMultiplier = season.teams[teamId]?.standings.wins ? 1.08 : season.teams[teamId]?.standings.podiums ? 1.04 : 0.96;
   const contract = createSponsorContract(
     teamId,
-    { ...sponsor, annualValue: Math.round(sponsor.annualValue * valueMultiplier), termYears },
+    { ...sponsor, annualValue: Math.round(sponsor.annualValue * valueMultiplier), termYears: term },
     season,
     season.seasonYear + 1,
-    termYears,
+    term,
   );
   season.sponsorContracts.push(contract);
   season.eventLog.push(event(`${season.teams[teamId]?.abbreviation ?? teamId} signed ${sponsor.name} as a future sponsor.`, season, teamId));
@@ -398,7 +550,7 @@ export function autoProcessAiSponsors(save: SaveData): EventLogEntry[] {
       if (hasFutureSponsor(season, team.id, contract.sponsorId)) continue;
       const evaluation = evaluateSponsorRenewal(contract, season);
       if (evaluation.passed) {
-        const renewed = renewSponsorContract(save, team.id, contract.id, 1);
+        const renewed = renewSponsorContract(save, team.id, contract.id, SPONSOR_MIN_TERM_YEARS);
         if (renewed.ok) events.push(event(`${team.abbreviation} renewed ${contract.name}.`, season, team.id));
       }
     }
@@ -406,7 +558,7 @@ export function autoProcessAiSponsors(save: SaveData): EventLogEntry[] {
     const categories = new Set(futureSponsorContracts(season, team.id, season.seasonYear).map((contract) => contract.category));
     for (const sponsor of availableSponsorMarket(season, team.id)) {
       if (categories.has(sponsor.category)) continue;
-      const signed = signSponsorFromMarket(save, team.id, sponsor.sponsorId, 1);
+      const signed = signSponsorFromMarket(save, team.id, sponsor.sponsorId, SPONSOR_MIN_TERM_YEARS);
       if (signed.ok) {
         categories.add(sponsor.category);
         events.push(event(`${team.abbreviation} signed ${sponsor.name}.`, season, team.id));

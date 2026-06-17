@@ -99,6 +99,16 @@ export type OffseasonState = {
   completedSteps: OffseasonStep[];
 };
 
+export type TeamExpectationProfile = {
+  prestigeRating: number;
+  roleAwareRating: number;
+  roleLabel: string;
+  expectedConstructorPosition: number;
+  minimumAcceptablePosition: number;
+  patience: number;
+  financialStrictness: number;
+};
+
 export type SponsorRenewalTarget = {
   minimumConstructorPosition: number;
   minimumPoints?: number;
@@ -275,6 +285,8 @@ export type TeamState = {
     budgetDiscipline: number;
     riskTolerance: number;
   };
+  /** Live prestige/expectations; shifts with season results. */
+  expectation?: TeamExpectationProfile;
 };
 
 export type TeamUpgradeProject = {

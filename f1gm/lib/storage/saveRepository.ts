@@ -1,7 +1,7 @@
 import { buildDriverSeasonInfo, buildInitialAcademy, buildRosterFromTeams, ensureTeamLineupStructure } from "@/lib/sim/roster";
 import { ensureDriverContractState } from "@/lib/sim/driverContracts";
 import { ensureOffseasonState } from "@/lib/sim/offseason";
-import { ensureJobSecurityState } from "@/lib/sim/ownerConfidence";
+import { ensureJobSecurityState, ensureTeamExpectations } from "@/lib/sim/ownerConfidence";
 import { ensurePowerUnitState } from "@/lib/sim/powerUnits";
 import { ensureSponsorState } from "@/lib/sim/sponsors";
 import type { DriverRaceState, RaceClassificationRow, RaceWeekendState } from "@/lib/sim/raceweekend/raceTypes";
@@ -156,6 +156,7 @@ function migrateSaveData(record: SaveRecord): SaveData | null {
   ensurePowerUnitState(save);
 
   // v11: sponsor contracts, driver contracts/mood, and strict offseason state.
+  ensureTeamExpectations(save);
   ensureSponsorState(save);
   ensureDriverContractState(save);
   ensureOffseasonState(save);

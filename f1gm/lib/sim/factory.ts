@@ -1,7 +1,7 @@
 import { teams } from "@/data/teams";
 import { ensureDriverContractState } from "@/lib/sim/driverContracts";
 import { ensureOffseasonState } from "@/lib/sim/offseason";
-import { createInitialJobSecurityState } from "@/lib/sim/ownerConfidence";
+import { createInitialJobSecurityState, ensureTeamExpectations } from "@/lib/sim/ownerConfidence";
 import { buildInitialPowerUnitState, isWorksTeamId } from "@/lib/sim/powerUnits";
 import { buildInitialAcademy, buildRosterFromTeams } from "@/lib/sim/roster";
 import { buildInitialSponsorContracts, syncTeamSponsorState } from "@/lib/sim/sponsors";
@@ -201,7 +201,7 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
     pendingWeekendPlan: null,
     roster,
     academy,
-    jobSecurity: createInitialJobSecurityState(playerTeamId),
+    jobSecurity: createInitialJobSecurityState(playerTeamId, { teams: teamsById }),
     offseason: { active: false, step: "season-summary", completedSteps: [] },
     sponsorContracts,
     driverContracts: [],
@@ -221,8 +221,10 @@ export function createNewSave(input: CreateSaveInput, seasonYear = 2026): SaveDa
   };
 
   syncTeamSponsorState(season);
-  ensureDriverContractState({ meta, season });
-  ensureOffseasonState({ meta, season });
+  const save = { meta, season };
+  ensureTeamExpectations(save);
+  ensureDriverContractState(save);
+  ensureOffseasonState(save);
 
-  return { meta, season };
+  return save;
 }

@@ -6,18 +6,10 @@ import {
   OwnerRiskTier,
   OwnerWarningLevel,
   SaveData,
+  SeasonState,
+  TeamExpectationProfile,
   TeamSnapshot,
 } from "@/types/sim";
-
-type TeamExpectationProfile = {
-  prestigeRating: number;
-  roleAwareRating: number;
-  roleLabel: string;
-  expectedConstructorPosition: number;
-  minimumAcceptablePosition: number;
-  patience: number;
-  financialStrictness: number;
-};
 
 const DEFAULT_EXPECTATION: TeamExpectationProfile = {
   prestigeRating: 42,
@@ -139,8 +131,8 @@ function round(value: number): number {
   return Math.round(value);
 }
 
-export function createInitialJobSecurityState(teamId: string): JobSecurityState {
-  const profile = getTeamExpectationProfile(teamId);
+export function createInitialJobSecurityState(teamId: string, season?: Pick<SeasonState, "teams">): JobSecurityState {
+  const profile = getTeamExpectationProfile(teamId, season);
   const confidenceScore = clamp(round(70 - profile.roleAwareRating * 0.08 + profile.patience * 0.12), 55, 78);
   return {
     confidenceScore,
@@ -160,7 +152,106 @@ export function ensureJobSecurityState(save: SaveData): JobSecurityState {
   return save.season.jobSecurity;
 }
 
-export function getTeamExpectationProfile(teamId: string): TeamExpectationProfile {
+export function createInitialTeamExpectation(teamId: string): TeamExpectationProfile {
+  const seed = teamExpectationProfiles[teamId] ?? DEFAULT_EXPECTATION;
+  return { ...seed };
+}
+
+export function ensureTeamExpectations(save: SaveData): void {
+  for (const team of Object.values(save.season.teams)) {
+    if (!team.expectation) {
+      team.expectation = createInitialTeamExpectation(team.id);
+    }
+  }
+}
+
+function deriveRoleLabel(prestigeRating: number, roleAwareRating: number): string {
+  const blend = (prestigeRating + roleAwareRating) / 2;
+  if (blend >= 90) return "Championship contender";
+  if (blend >= 78) return "Elite challenger";
+  if (blend >= 65) return "Established front-runner";
+  if (blend >= 52) return "Established midfield";
+  if (blend >= 40) return "Developing programme";
+  return "Recovery project";
+}
+
+function constructorPositionForTeam(season: SeasonState, teamId: string): number {
+  const standings = Object.values(season.teams).sort(
+    (a, b) => b.standings.points - a.standings.points || b.standings.wins - a.standings.wins || b.standings.podiums - a.standings.podiums,
+  );
+  const index = standings.findIndex((team) => team.id === teamId);
+  return index === -1 ? standings.length : index + 1;
+}
+
+/** Shift live team prestige/expectations from season-end constructor results (all teams). */
+export function updateTeamExpectations(save: SaveData): void {
+  ensureTeamExpectations(save);
+  const season = save.season;
+  const teamCount = Math.max(1, Object.keys(season.teams).length);
+
+  for (const team of Object.values(season.teams)) {
+    const profile = team.expectation!;
+    const position = constructorPositionForTeam(season, team.id);
+    const beatExpected = profile.expectedConstructorPosition - position;
+    const missedFloor = position - profile.minimumAcceptablePosition;
+
+    let prestigeDelta = 0;
+    let roleAwareDelta = 0;
+    let expectedPosDelta = 0;
+
+    if (beatExpected >= 2) {
+      prestigeDelta = 6;
+      roleAwareDelta = 5;
+      expectedPosDelta = -1;
+    } else if (beatExpected >= 1) {
+      prestigeDelta = 4;
+      roleAwareDelta = 3;
+      expectedPosDelta = -1;
+    } else if (missedFloor >= 2) {
+      prestigeDelta = -6;
+      roleAwareDelta = -5;
+      expectedPosDelta = 1;
+    } else if (missedFloor >= 1) {
+      prestigeDelta = -4;
+      roleAwareDelta = -3;
+      expectedPosDelta = 1;
+    } else if (beatExpected <= -2) {
+      prestigeDelta = -3;
+      roleAwareDelta = -2;
+      expectedPosDelta = 1;
+    }
+
+    if (team.standings.wins > 0 && profile.prestigeRating < 88) {
+      prestigeDelta += 2;
+      roleAwareDelta += 2;
+    } else if (team.standings.podiums >= 3 && profile.prestigeRating < 75) {
+      prestigeDelta += 1;
+      roleAwareDelta += 1;
+    }
+
+    if (profile.roleAwareRating >= 82 && team.standings.wins === 0 && position > 4) {
+      prestigeDelta -= 3;
+      roleAwareDelta -= 2;
+    }
+
+    profile.prestigeRating = clamp(profile.prestigeRating + prestigeDelta, 28, 99);
+    profile.roleAwareRating = clamp(profile.roleAwareRating + roleAwareDelta, 28, 99);
+    profile.expectedConstructorPosition = clamp(profile.expectedConstructorPosition + expectedPosDelta, 1, teamCount);
+    const floorSlack = profile.prestigeRating >= 82 ? 2 : profile.prestigeRating >= 58 ? 1 : 2;
+    profile.minimumAcceptablePosition = clamp(profile.expectedConstructorPosition + floorSlack, profile.expectedConstructorPosition, teamCount);
+    profile.roleLabel = deriveRoleLabel(profile.prestigeRating, profile.roleAwareRating);
+  }
+}
+
+/** Best (lowest P) constructor target this team's current backing can support for sponsors. */
+export function teamStrictestSponsorPosition(profile: TeamExpectationProfile, teamCount: number): number {
+  const lift = Math.floor(profile.roleAwareRating / 28);
+  return clamp(profile.expectedConstructorPosition - lift, 1, teamCount);
+}
+
+export function getTeamExpectationProfile(teamId: string, season?: Pick<SeasonState, "teams">): TeamExpectationProfile {
+  const live = season?.teams[teamId]?.expectation;
+  if (live) return live;
   return teamExpectationProfiles[teamId] ?? DEFAULT_EXPECTATION;
 }
 
@@ -205,7 +296,7 @@ export function evaluateOwnerConfidence(save: SaveData): OwnerConfidenceReview {
 
   const teamId = save.meta.playerTeamId;
   const team = save.season.teams[teamId];
-  const profile = getTeamExpectationProfile(teamId);
+  const profile = getTeamExpectationProfile(teamId, save.season);
   const standings = Object.values(save.season.teams).sort(
     (a, b) => b.standings.points - a.standings.points || b.standings.wins - a.standings.wins || b.standings.podiums - a.standings.podiums,
   );

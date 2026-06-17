@@ -10,6 +10,7 @@ import {
   signOptimalDriver as signDriverWithOptimalOffer,
   playerNeedsFreeAgentSigning,
   type DriverMarketRow,
+  type DriverOfferPreview,
 } from "@/lib/sim/driverContracts";
 import { getNewsFeed } from "@/lib/sim/news";
 import { canStartNextSeason, completeOffseasonStep as advanceOffseasonStep, ensureOffseasonState } from "@/lib/sim/offseason";
@@ -19,8 +20,14 @@ import {
   availableSponsorMarket,
   evaluateSponsorRenewal,
   expiringSponsorContracts,
+  playerSponsorSlotsFull,
+  previewSponsorDeal,
+  previewSponsorRenewal,
   renewSponsorContract,
   signSponsorFromMarket,
+  SPONSOR_MAX_TERM_YEARS,
+  SPONSOR_MIN_TERM_YEARS,
+  type SponsorDealPreview,
 } from "@/lib/sim/sponsors";
 import {
   AcademyViewRow,
@@ -110,11 +117,8 @@ export type PlayThroughStepResult = {
   raceResult?: RaceResult;
 };
 
-export type DriverOfferPreview = {
-  accepted: boolean;
-  label: "likely" | "uncertain" | "unlikely" | "refused";
-  reason: string;
-};
+export type { DriverOfferPreview } from "@/lib/sim/driverContracts";
+export type { SponsorDealPreview } from "@/lib/sim/sponsors";
 
 export type SponsorRenewalRow = {
   contract: SponsorContract;
@@ -126,6 +130,12 @@ export type SponsorRenewalRow = {
     podiums: number;
   };
   target: SponsorRenewalTarget;
+};
+
+export type SponsorMarketStatus = {
+  market: ReturnType<typeof availableSponsorMarket>;
+  slotsFull: boolean;
+  nextSeason: number;
 };
 
 class SimulationSessionService {
@@ -328,20 +338,67 @@ class SimulationSessionService {
     return { ok: true, data: availableSponsorMarket(this.activeSave.season, this.activeSave.meta.playerTeamId) };
   }
 
-  renewSponsor(contractId: string): GameActionResult<void> {
+  getSponsorMarketStatus(): GameActionResult<SponsorMarketStatus> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
-    const result = renewSponsorContract(this.activeSave, this.activeSave.meta.playerTeamId, contractId, 1);
+    const season = this.activeSave.season;
+    const teamId = this.activeSave.meta.playerTeamId;
+    const nextSeason = season.seasonYear + 1;
+    return {
+      ok: true,
+      data: {
+        market: availableSponsorMarket(season, teamId),
+        slotsFull: playerSponsorSlotsFull(season, teamId, nextSeason),
+        nextSeason,
+      },
+    };
+  }
+
+  renewSponsor(contractId: string, termYears = SPONSOR_MIN_TERM_YEARS): GameActionResult<void> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const result = renewSponsorContract(this.activeSave, this.activeSave.meta.playerTeamId, contractId, termYears);
     if (!result.ok) return result;
     this.queueAutosave();
     return { ok: true, data: undefined };
   }
 
-  signSponsor(sponsorId: string): GameActionResult<void> {
+  signSponsor(sponsorId: string, termYears = SPONSOR_MIN_TERM_YEARS): GameActionResult<void> {
     if (!this.activeSave) return { ok: false, error: "No active save loaded." };
-    const result = signSponsorFromMarket(this.activeSave, this.activeSave.meta.playerTeamId, sponsorId, 1);
+    const result = signSponsorFromMarket(this.activeSave, this.activeSave.meta.playerTeamId, sponsorId, termYears);
     if (!result.ok) return result;
     this.queueAutosave();
     return { ok: true, data: undefined };
+  }
+
+  previewSponsorSign(sponsorId: string, termYears = SPONSOR_MIN_TERM_YEARS): GameActionResult<SponsorDealPreview> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const sponsor = availableSponsorMarket(this.activeSave.season, this.activeSave.meta.playerTeamId).find(
+      (item) => item.sponsorId === sponsorId,
+    );
+    if (!sponsor) return { ok: false, error: "Sponsor is not on the market." };
+    return {
+      ok: true,
+      data: previewSponsorDeal(this.activeSave, this.activeSave.meta.playerTeamId, sponsor, termYears),
+    };
+  }
+
+  previewSponsorRenew(contractId: string, termYears = SPONSOR_MIN_TERM_YEARS): GameActionResult<SponsorDealPreview> {
+    if (!this.activeSave) return { ok: false, error: "No active save loaded." };
+    const contract = (this.activeSave.season.sponsorContracts ?? []).find(
+      (item) => item.id === contractId && item.teamId === this.activeSave!.meta.playerTeamId,
+    );
+    if (!contract) return { ok: false, error: "Sponsor contract not found." };
+    return {
+      ok: true,
+      data: previewSponsorRenewal(this.activeSave, this.activeSave.meta.playerTeamId, contract, termYears),
+    };
+  }
+
+  getSponsorTermOptions(): GameActionResult<number[]> {
+    const options: number[] = [];
+    for (let years = SPONSOR_MIN_TERM_YEARS; years <= SPONSOR_MAX_TERM_YEARS; years += 1) {
+      options.push(years);
+    }
+    return { ok: true, data: options };
   }
 
   getPowerUnitManagement(): GameActionResult<PowerUnitManagement> {
