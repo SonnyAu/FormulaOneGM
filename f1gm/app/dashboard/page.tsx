@@ -58,6 +58,7 @@ function DashboardPageContent({ saveId, simMode, simRun }: DashboardPageContentP
   const activeSimRunRef = useRef<string | null>(null);
   const handledSimRunsRef = useRef<Set<string>>(new Set());
   const stopAfterCurrentRaceRef = useRef(false);
+  const cancelledRef = useRef(false);
 
   const refreshStandings = useCallback(() => {
     const result = simulationSession.getStandings();
@@ -156,6 +157,20 @@ function DashboardPageContent({ saveId, simMode, simRun }: DashboardPageContentP
       stopAfterCurrentRaceRef.current = false;
       setSessionError(null);
 
+      // The save is normally already active (we navigated here from the dashboard), but on a
+      // direct load/refresh with sim params the session may not be hydrated yet - load it so the
+      // run does not silently abort in createPlayThroughPlan.
+      if (simulationSession.getActiveSaveMeta()?.id !== saveId) {
+        const load = await simulationSession.loadSave(saveId);
+        if (!load.ok) {
+          setSessionError(load.error);
+          setVisualSim(null);
+          activeSimRunRef.current = null;
+          clearSimQuery();
+          return;
+        }
+      }
+
       const planResult = simulationSession.createPlayThroughPlan(mode);
       if (!planResult.ok) {
         setSessionError(planResult.error);
@@ -179,7 +194,10 @@ function DashboardPageContent({ saveId, simMode, simRun }: DashboardPageContentP
 
       try {
         while (true) {
+          if (cancelledRef.current) break;
+
           if (stopAfterCurrentRaceRef.current) {
+            await simulationSession.flushPendingWrites();
             setVisualSim((current) =>
               current ? { ...current, status: "stopped", message: "Stopped before starting the next race." } : current,
             );
@@ -190,7 +208,13 @@ function DashboardPageContent({ saveId, simMode, simRun }: DashboardPageContentP
             current ? { ...current, status: "running", message: "Simulating next race weekend..." } : current,
           );
 
+          // Yield to the browser so React can paint the "Simulating..." state before the next
+          // race is simulated synchronously - this is what makes the run visibly step race by race.
+          await delay(0);
+          if (cancelledRef.current) break;
+
           const step = await simulationSession.playThroughStep(plan);
+          if (cancelledRef.current) break;
           if (!step.ok) {
             setSessionError(step.error);
             setVisualSim((current) => (current ? { ...current, status: "error", message: step.error } : current));
@@ -225,16 +249,24 @@ function DashboardPageContent({ saveId, simMode, simRun }: DashboardPageContentP
           }
 
           await delay(SIM_STEP_DELAY_MS);
+          if (cancelledRef.current) break;
           if (stopAfterCurrentRaceRef.current) {
+            await simulationSession.flushPendingWrites();
             setVisualSim((current) =>
               current ? { ...current, status: "stopped", message: "Stopped after the current race." } : current,
             );
             break;
           }
         }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Fast-sim failed unexpectedly.";
+        setSessionError(message);
+        setVisualSim((current) => (current ? { ...current, status: "error", message } : current));
       } finally {
         activeSimRunRef.current = null;
-        if (routeToSeasonReview) {
+        if (cancelledRef.current) {
+          // Component is unmounting - do not touch the router.
+        } else if (routeToSeasonReview) {
           router.push(`/season-review?saveId=${saveId}`);
         } else {
           clearSimQuery();
@@ -245,9 +277,25 @@ function DashboardPageContent({ saveId, simMode, simRun }: DashboardPageContentP
   );
 
   useEffect(() => {
-    if (!summary || !simMode || !simRun) return;
+    if (!simMode || !simRun) return;
     void runVisualSimulation(simMode, simRun);
-  }, [runVisualSimulation, simMode, simRun, summary]);
+  }, [runVisualSimulation, simMode, simRun]);
+
+  // Allow a fresh run once the sim params clear (e.g. after a completed run cleared the query).
+  useEffect(() => {
+    if (!simRun) {
+      handledSimRunsRef.current.clear();
+      activeSimRunRef.current = null;
+    }
+  }, [simRun]);
+
+  // Hard-stop any in-flight run when the dashboard unmounts (navigation away).
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
 
   if (!saveId) {
     return (
@@ -382,6 +430,9 @@ function VisualSimPanel({ state, onStop }: { state: VisualSimState; onStop: () =
             {state.lastRaceName ? ` Latest: ${state.lastRaceName}.` : ""}
           </p>
           <p className="mt-1 text-xs text-zinc-400">{state.message}</p>
+          {canStop && state.targetRaces > 1 ? (
+            <p className="mt-1 text-xs text-emerald-300/80">Auto-advancing one race at a time - Stop halts after the current race.</p>
+          ) : null}
         </div>
         <button
           type="button"
