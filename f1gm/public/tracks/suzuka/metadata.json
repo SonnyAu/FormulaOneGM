@@ -1,0 +1,74 @@
+{
+  "id": "suzuka",
+  "name": "Suzuka Circuit",
+  "country": "Japan",
+  "layoutLengthKm": 5.807,
+  "laps": 53,
+  "geometry": {
+    "racingLine": [
+      { "x": 140, "y": 220 },
+      { "x": 140, "y": 400 },
+      { "x": 200, "y": 480 },
+      { "x": 320, "y": 470 },
+      { "x": 430, "y": 400 },
+      { "x": 500, "y": 300 },
+      { "x": 580, "y": 210 },
+      { "x": 720, "y": 160 },
+      { "x": 860, "y": 190 },
+      { "x": 900, "y": 310 },
+      { "x": 860, "y": 430 },
+      { "x": 720, "y": 470 },
+      { "x": 600, "y": 430 },
+      { "x": 500, "y": 300 },
+      { "x": 450, "y": 230 },
+      { "x": 380, "y": 160 },
+      { "x": 260, "y": 115 },
+      { "x": 170, "y": 140 }
+    ],
+    "pitLane": [
+      { "x": 196, "y": 186 },
+      { "x": 214, "y": 265 },
+      { "x": 214, "y": 370 },
+      { "x": 194, "y": 456 }
+    ],
+    "smoothed": true
+  },
+  "startFinish": {
+    "distance": 0
+  },
+  "sectors": [
+    { "sector": 1, "start": 0, "end": 0.33 },
+    { "sector": 2, "start": 0.33, "end": 0.68 },
+    { "sector": 3, "start": 0.68, "end": 1 }
+  ],
+  "pit": {
+    "entry": 0.955,
+    "exit": 0.1,
+    "box": 0.5,
+    "lossSeconds": 22
+  },
+  "corners": [
+    { "name": "Turn 1", "distance": 0.1, "difficulty": 0.7, "type": "braking" },
+    { "name": "S Curves", "distance": 0.2, "difficulty": 0.85, "type": "sweeper" },
+    { "name": "Degner", "distance": 0.33, "difficulty": 0.75, "type": "mediumSpeed" },
+    { "name": "Hairpin", "distance": 0.45, "difficulty": 0.6, "type": "hairpin" },
+    { "name": "Spoon", "distance": 0.6, "difficulty": 0.7, "type": "highSpeed" },
+    { "name": "130R", "distance": 0.7, "difficulty": 0.9, "type": "highSpeed" },
+    { "name": "Casio Chicane", "distance": 0.9, "difficulty": 0.65, "type": "chicane" }
+  ],
+  "elevationProfile": [
+    { "distance": 0, "elevationM": 0 },
+    { "distance": 0.12, "elevationM": 8 },
+    { "distance": 0.28, "elevationM": 22 },
+    { "distance": 0.48, "elevationM": 14 },
+    { "distance": 0.72, "elevationM": 31 },
+    { "distance": 1, "elevationM": 0 }
+  ],
+  "crossoverZones": [
+    {
+      "name": "Suzuka Crossover",
+      "lowerPath": { "start": 0.27, "end": 0.31, "renderLayer": 1 },
+      "upperPath": { "start": 0.7, "end": 0.74, "renderLayer": 3 }
+    }
+  ]
+}

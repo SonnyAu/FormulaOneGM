@@ -21,6 +21,10 @@ npm run build
 npm run check
 ```
 
+## Internal tools
+
+- Track asset editor: `/dev/track-editor` (local or deployed). See [docs/track-assets.md](docs/track-assets.md) for drawing circuits, placing metadata, saving custom tracks in the browser, and exporting game-ready `metadata.json` (rendered in-game via `TrackMap` + `loadTrackMetadata`).
+
 ## Notes for dependency install reliability
 
 - This repository now commits a project-level `.npmrc` that pins the public npm registry (`https://registry.npmjs.org/`) to avoid accidental installs against a private/company mirror.

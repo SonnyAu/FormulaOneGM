@@ -115,6 +115,12 @@ export default function Home() {
               Import Save
               <input type="file" accept="application/json" className="hidden" onChange={onImport} />
             </label>
+            <Link
+              href="/dev/track-editor"
+              className="ui-interactive rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:border-zinc-500"
+            >
+              Track Editor
+            </Link>
           </div>
         </header>
 
