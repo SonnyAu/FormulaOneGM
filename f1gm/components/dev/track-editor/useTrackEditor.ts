@@ -5,7 +5,7 @@
 // the panels and canvas need. Kept UI-free so the components stay
 // presentational.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { SnapCandidate, TrackMetadata, TrackPathKind } from "@/lib/tracks/trackMetadata";
 import {
   createEmptyTrackMetadata,
@@ -205,16 +205,24 @@ export function useTrackEditor() {
             setStatusMessage("Racing line closed.");
             return current;
           }
-          const draft = structuredClone(current);
-          draft.geometry.racingLine.push({ x: point.x, y: point.y });
-          return draft;
+          return {
+            ...current,
+            geometry: {
+              ...current.geometry,
+              racingLine: [...anchors, { x: point.x, y: point.y }],
+            },
+          };
         });
       } else {
         setMetadata((current) => {
-          const draft = structuredClone(current);
-          if (!draft.geometry.pitLane) draft.geometry.pitLane = [];
-          draft.geometry.pitLane.push({ x: point.x, y: point.y });
-          return draft;
+          const anchors = current.geometry.pitLane ?? [];
+          return {
+            ...current,
+            geometry: {
+              ...current.geometry,
+              pitLane: [...anchors, { x: point.x, y: point.y }],
+            },
+          };
         });
       }
     },
@@ -241,11 +249,15 @@ export function useTrackEditor() {
 
   const moveAnchor = useCallback((ref: AnchorRef, point: TrackGeometryPoint) => {
     setMetadata((current) => {
-      const draft = structuredClone(current);
-      const anchors = ref.path === "racing-line" ? draft.geometry.racingLine : draft.geometry.pitLane;
+      const pathKey = ref.path === "racing-line" ? "racingLine" : "pitLane";
+      const anchors = current.geometry[pathKey];
       if (!anchors || !anchors[ref.index]) return current;
-      anchors[ref.index] = { x: point.x, y: point.y };
-      return draft;
+      const nextAnchors = anchors.slice();
+      nextAnchors[ref.index] = { x: point.x, y: point.y };
+      return {
+        ...current,
+        geometry: { ...current.geometry, [pathKey]: nextAnchors },
+      };
     });
   }, []);
 
@@ -257,39 +269,48 @@ export function useTrackEditor() {
       if (!anchors || anchors.length < 2) return current;
       const segment = nearestSegmentIndex(anchors, pathKind === "racing-line", point.x, point.y);
       if (!segment) return current;
-      const draft = structuredClone(current);
-      const target =
-        pathKind === "racing-line" ? draft.geometry.racingLine : draft.geometry.pitLane!;
-      target.splice(segment.index + 1, 0, { x: point.x, y: point.y });
+      const nextAnchors = anchors.slice();
+      nextAnchors.splice(segment.index + 1, 0, { x: point.x, y: point.y });
       setSelectedAnchor({ path: pathKind, index: segment.index + 1 });
-      return draft;
+      return {
+        ...current,
+        geometry: {
+          ...current.geometry,
+          ...(pathKind === "racing-line" ? { racingLine: nextAnchors } : { pitLane: nextAnchors }),
+        },
+      };
     });
   }, []);
 
   const deleteAnchor = useCallback((ref: AnchorRef) => {
     setMetadata((current) => {
-      const anchors =
-        ref.path === "racing-line" ? current.geometry.racingLine : current.geometry.pitLane;
+      const pathKey = ref.path === "racing-line" ? "racingLine" : "pitLane";
+      const anchors = current.geometry[pathKey];
       const minimum = ref.path === "racing-line" ? MIN_RACING_LINE_ANCHORS : MIN_PIT_LANE_ANCHORS;
       if (!anchors || anchors.length <= minimum) return current;
-      const draft = structuredClone(current);
-      const target = ref.path === "racing-line" ? draft.geometry.racingLine : draft.geometry.pitLane!;
-      target.splice(ref.index, 1);
-      return draft;
+      const nextAnchors = anchors.slice();
+      nextAnchors.splice(ref.index, 1);
+      return {
+        ...current,
+        geometry: { ...current.geometry, [pathKey]: nextAnchors },
+      };
     });
     setSelectedAnchor(null);
   }, []);
 
   const clearPath = useCallback((pathKind: TrackPathKind) => {
     setMetadata((current) => {
-      const draft = structuredClone(current);
       if (pathKind === "racing-line") {
-        draft.geometry.racingLine = [];
-      } else {
-        draft.geometry.pitLane = null;
-        draft.pit = null;
+        return {
+          ...current,
+          geometry: { ...current.geometry, racingLine: [] },
+        };
       }
-      return draft;
+      return {
+        ...current,
+        pit: null,
+        geometry: { ...current.geometry, pitLane: null },
+      };
     });
     if (pathKind === "racing-line") setRacingClosed(false);
     else setPitFinished(false);
@@ -524,7 +545,8 @@ export function useTrackEditor() {
 
   // --- Validation + export ---
 
-  const validation = useMemo(() => validateTrackMetadata(metadata), [metadata]);
+  const deferredMetadata = useDeferredValue(metadata);
+  const validation = useMemo(() => validateTrackMetadata(deferredMetadata), [deferredMetadata]);
 
   const exportMetadata = useCallback(() => {
     if (!validation.valid) return false;

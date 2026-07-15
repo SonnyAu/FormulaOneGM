@@ -3,9 +3,14 @@
 // Track editor canvas: wraps the game-facing TrackMap renderer and layers the
 // editing UI on top — geometry anchor handles (draw/reshape), metadata
 // markers, hover tooltip, and the ambiguous-snap popover.
+//
+// Anchor drag updates the SVG path `d` and handle transform directly in the
+// DOM (no React metadata commits per frame). Geometry is committed once on
+// pointerup so reshape stays smooth.
 
-import { useCallback, useMemo, useRef, useState } from "react";
-import type { SnapCandidate, TrackPathKind } from "@/lib/tracks/trackMetadata";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { SnapCandidate, TrackMetadata, TrackPathKind } from "@/lib/tracks/trackMetadata";
+import { geometryToPathD, type TrackGeometryPoint } from "@/lib/tracks/geometry";
 import {
   clientPointToSvg,
   findSnapCandidates,
@@ -25,7 +30,13 @@ import {
   markerRefEquals,
 } from "@/components/dev/track-editor/editorTypes";
 import type { TrackEditorState } from "@/components/dev/track-editor/useTrackEditor";
-import { rangePoints, TrackMap, useTrackPaths, type TrackMapCar } from "@/components/tracks/TrackMap";
+import {
+  rangePoints,
+  TrackMap,
+  useTrackPaths,
+  type TrackMapCar,
+  type TrackPaths,
+} from "@/components/tracks/TrackMap";
 import { SnapCandidatePopover } from "@/components/dev/track-editor/SnapCandidatePopover";
 
 type MarkerVM = {
@@ -44,19 +55,55 @@ type HoverInfo = {
   pathKind: TrackPathKind;
 };
 
+type HoverDetails = {
+  sector: ReturnType<typeof getSectorAtDistance>;
+  corner: ReturnType<typeof findNearestCorner>;
+  elevation: number | null;
+  crossover: ReturnType<typeof getCrossoverSectionAtDistance>;
+};
+
+type DragSession = {
+  anchor: AnchorRef;
+  moved: boolean;
+  /** Draft anchors for the path being edited (mutated during drag). */
+  anchors: TrackGeometryPoint[];
+  closed: boolean;
+  smoothed: boolean;
+};
+
 /** How close (SVG units) a click must be to an anchor to select it. */
 const ANCHOR_HIT_RADIUS = 12;
+
+/** Editor hover/snap sample density — denser sampling stays in game TrackMap default (800). */
+const EDITOR_SAMPLE_COUNT = 80;
+
+function applyLivePathD(svg: SVGSVGElement, pathKind: TrackPathKind, d: string) {
+  if (pathKind === "racing-line") {
+    svg
+      .querySelectorAll('[data-track-path="asphalt"], [data-track-path="racing-line"]')
+      .forEach((el) => el.setAttribute("d", d));
+  } else {
+    svg.querySelector('[data-track-path="pit-lane"]')?.setAttribute("d", d);
+  }
+}
 
 export function SvgCanvas({ editor, cars }: { editor: TrackEditorState; cars: TrackMapCar[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
-  // Anchor being dragged, plus whether it actually moved (to suppress the
-  // click event that fires after pointerup ends a drag).
-  const dragRef = useRef<{ anchor: AnchorRef; moved: boolean } | null>(null);
+  /** Frozen path samples for the duration of a drag (sectors/markers stay put). */
+  const [dragSnapshot, setDragSnapshot] = useState<TrackPaths | null>(null);
+  const dragRef = useRef<DragSession | null>(null);
+  const pendingDragPointRef = useRef<{ x: number; y: number } | null>(null);
+  const dragRafRef = useRef<number | null>(null);
+  const hoverPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const hoverRafRef = useRef<number | null>(null);
+  const hoverRef = useRef<HoverInfo | null>(null);
 
   const { metadata, layers, tool, selectedMarker, mode } = editor;
-  const { racingPath, pitPath, racingSamples, pitSamples } = useTrackPaths(metadata);
+  const computedPaths = useTrackPaths(metadata, EDITOR_SAMPLE_COUNT);
+  const paths = dragSnapshot ?? computedPaths;
+  const { racingPath, pitPath, racingSamples, pitSamples } = paths;
 
   const toSvgPoint = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -226,7 +273,30 @@ export function SvgCanvas({ editor, cars }: { editor: TrackEditorState; cars: Tr
     ],
   );
 
-  // --- Anchor dragging ---
+  /** Paint draft anchors onto the live SVG without a React commit. */
+  const paintDragOverlay = useCallback((session: DragSession) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const { anchor, anchors, closed, smoothed } = session;
+    const d = geometryToPathD(anchors, closed, smoothed);
+    applyLivePathD(svg, anchor.path, d);
+    const handle = svg.querySelector(`[data-anchor-index="${anchor.index}"]`);
+    const point = anchors[anchor.index];
+    if (handle && point) {
+      handle.setAttribute("transform", `translate(${point.x}, ${point.y})`);
+    }
+  }, []);
+
+  const flushDragMove = useCallback(() => {
+    dragRafRef.current = null;
+    const drag = dragRef.current;
+    const point = pendingDragPointRef.current;
+    if (!drag || !point) return;
+    drag.anchors[drag.anchor.index] = { x: point.x, y: point.y };
+    paintDragOverlay(drag);
+  }, [paintDragOverlay]);
+
+  // --- Anchor dragging (DOM overlay; commit on pointerup) ---
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -235,66 +305,142 @@ export function SvgCanvas({ editor, cars }: { editor: TrackEditorState; cars: Tr
       const point = toSvgPoint(event.clientX, event.clientY);
       if (!point) return;
       drag.moved = true;
-      editor.moveAnchor(drag.anchor, point);
+      pendingDragPointRef.current = point;
+      if (dragRafRef.current == null) {
+        dragRafRef.current = requestAnimationFrame(flushDragMove);
+      }
     },
-    [toSvgPoint, editor],
+    [toSvgPoint, flushDragMove],
   );
 
   const handlePointerUp = useCallback(() => {
-    if (!dragRef.current) return;
-    const moved = dragRef.current.moved;
-    dragRef.current = moved ? dragRef.current : null;
+    if (dragRafRef.current != null) {
+      cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = null;
+      flushDragMove();
+    }
+    const drag = dragRef.current;
+    const finalPoint = pendingDragPointRef.current;
+    pendingDragPointRef.current = null;
+    setDragSnapshot(null);
+    if (!drag) return;
+    const moved = drag.moved;
+    if (moved && finalPoint) {
+      editor.moveAnchor(drag.anchor, finalPoint);
+    }
+    dragRef.current = moved ? drag : null;
     // Keep the drag record until after the synthetic click fires, then clear.
     if (moved) setTimeout(() => (dragRef.current = null), 0);
-  }, []);
+  }, [flushDragMove, editor]);
 
   const startAnchorDrag = useCallback(
     (anchor: AnchorRef) => (event: React.PointerEvent) => {
       event.stopPropagation();
-      dragRef.current = { anchor, moved: false };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      const source =
+        anchor.path === "racing-line"
+          ? metadata.geometry.racingLine
+          : metadata.geometry.pitLane ?? [];
+      dragRef.current = {
+        anchor,
+        moved: false,
+        anchors: source.map((p) => ({ x: p.x, y: p.y })),
+        closed: anchor.path === "racing-line",
+        smoothed: metadata.geometry.smoothed,
+      };
+      pendingDragPointRef.current = null;
+      setDragSnapshot(computedPaths);
       editor.setSelectedAnchor(anchor);
     },
-    [editor],
+    [editor, metadata.geometry, computedPaths],
   );
 
-  // --- Hover tooltip ---
-  const handleMouseMove = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (racingSamples.length === 0) {
-        setHover(null);
-        return;
-      }
-      const point = toSvgPoint(event.clientX, event.clientY);
-      if (!point) return;
-      const radius = svgRadius(18);
+  const applyHoverFromPointer = useCallback(() => {
+    hoverRafRef.current = null;
+    const pointer = hoverPointerRef.current;
+    if (!pointer || dragRef.current) return;
 
-      // Prefer the racing line; fall back to the pit lane when it's closer.
-      let best: { distance: number; pathKind: TrackPathKind; gap: number } | null = null;
-      for (const [samples, pathKind] of [
-        [racingSamples, "racing-line"],
-        [pitSamples, "pit-lane"],
-      ] as const) {
-        for (const sample of samples) {
-          const gap = Math.hypot(sample.x - point.x, sample.y - point.y);
-          if (gap <= radius && (!best || gap < best.gap)) {
-            best = { distance: sample.distance, pathKind, gap };
-          }
+    if (racingSamples.length === 0) {
+      if (hoverRef.current !== null) {
+        hoverRef.current = null;
+        setHover(null);
+      }
+      return;
+    }
+
+    const point = toSvgPoint(pointer.clientX, pointer.clientY);
+    if (!point) return;
+    const radius = svgRadius(18);
+
+    let best: { distance: number; pathKind: TrackPathKind; gap: number } | null = null;
+    for (const [samples, pathKind] of [
+      [racingSamples, "racing-line"],
+      [pitSamples, "pit-lane"],
+    ] as const) {
+      for (const sample of samples) {
+        const gap = Math.hypot(sample.x - point.x, sample.y - point.y);
+        if (gap <= radius && (!best || gap < best.gap)) {
+          best = { distance: sample.distance, pathKind, gap };
         }
       }
-      const rect = containerRef.current?.getBoundingClientRect();
-      setHover(
-        best && rect
-          ? {
-              left: event.clientX - rect.left + 14,
-              top: event.clientY - rect.top + 14,
-              distance: best.distance,
-              pathKind: best.pathKind,
-            }
-          : null,
-      );
+    }
+
+    const rect = containerRef.current?.getBoundingClientRect();
+    const next: HoverInfo | null =
+      best && rect
+        ? {
+            left: pointer.clientX - rect.left + 14,
+            top: pointer.clientY - rect.top + 14,
+            distance: best.distance,
+            pathKind: best.pathKind,
+          }
+        : null;
+
+    const prev = hoverRef.current;
+    if (
+      (prev === null && next === null) ||
+      (prev !== null &&
+        next !== null &&
+        prev.pathKind === next.pathKind &&
+        Math.abs(prev.distance - next.distance) <= 0.002 &&
+        Math.abs(prev.left - next.left) <= 2 &&
+        Math.abs(prev.top - next.top) <= 2)
+    ) {
+      return;
+    }
+
+    hoverRef.current = next;
+    setHover(next);
+  }, [racingSamples, pitSamples, toSvgPoint, svgRadius]);
+
+  // --- Hover tooltip (RAF-throttled; skipped during drag) ---
+  const handleMouseMove = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (dragRef.current) return;
+      hoverPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+      if (hoverRafRef.current == null) {
+        hoverRafRef.current = requestAnimationFrame(applyHoverFromPointer);
+      }
     },
-    [racingSamples, pitSamples, toSvgPoint, svgRadius],
+    [applyHoverFromPointer],
   );
+
+  const handleMouseLeave = useCallback(() => {
+    hoverPointerRef.current = null;
+    if (hoverRafRef.current != null) {
+      cancelAnimationFrame(hoverRafRef.current);
+      hoverRafRef.current = null;
+    }
+    hoverRef.current = null;
+    setHover(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (dragRafRef.current != null) cancelAnimationFrame(dragRafRef.current);
+      if (hoverRafRef.current != null) cancelAnimationFrame(hoverRafRef.current);
+    };
+  }, []);
 
   // Delete key removes the selected anchor (draw mode) or marker.
   const handleKeyDown = useCallback(
@@ -309,17 +455,26 @@ export function SvgCanvas({ editor, cars }: { editor: TrackEditorState; cars: Tr
     [editor, selectedMarker],
   );
 
-  const hoverDetails = useMemo(() => {
+  const hoverDetails = useMemo<HoverDetails | null>(() => {
     if (!hover) return null;
-    const sector = getSectorAtDistance(metadata, hover.distance);
-    const corner = findNearestCorner(metadata, hover.distance);
-    const elevation = getElevationAtDistance(metadata, hover.distance);
-    const crossover = getCrossoverSectionAtDistance(metadata.crossoverZones, hover.distance);
-    return { sector, corner, elevation, crossover };
+    return {
+      sector: getSectorAtDistance(metadata, hover.distance),
+      corner: findNearestCorner(metadata, hover.distance),
+      elevation: getElevationAtDistance(metadata, hover.distance),
+      crossover: getCrossoverSectionAtDistance(metadata.crossoverZones, hover.distance),
+    };
   }, [hover, metadata]);
 
   const markerBaseRadius = 6;
   const showAnchors = activeDrawPath !== null;
+
+  const onSelectMarker = useCallback(
+    (ref: MarkerRef) => {
+      editor.setSelectedMarker(ref);
+      editor.setTool("select");
+    },
+    [editor],
+  );
 
   return (
     <div
@@ -328,99 +483,31 @@ export function SvgCanvas({ editor, cars }: { editor: TrackEditorState; cars: Tr
       className="relative h-full min-h-[420px] w-full overflow-hidden rounded border border-zinc-700 bg-[#10151d] outline-none"
       onClick={handleCanvasClick}
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => setHover(null)}
+      onMouseLeave={handleMouseLeave}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onKeyDown={handleKeyDown}
     >
-      <TrackMap
+      <EditorTrackScene
         metadata={metadata}
+        paths={paths}
         cars={cars}
-        showRacingLine={layers.racingLine}
-        showPitLane={layers.pitLane}
-        showSectors={layers.sectors}
-        showBridges={layers.bridgeOverlays}
-        showCars={layers.previewCars}
+        layers={layers}
+        mode={mode}
+        markers={markers}
+        selectedMarker={selectedMarker}
+        selectedAnchor={editor.selectedAnchor}
+        activeDrawPath={activeDrawPath}
+        showAnchors={showAnchors}
+        drawingInProgress={drawingInProgress}
+        anchors={activeDrawPath ? anchorsFor(activeDrawPath) : []}
+        racingSamples={racingSamples}
+        markerBaseRadius={markerBaseRadius}
         svgRef={svgRef}
-        className="h-full w-full p-2"
-      >
-        {/* Crossover section highlights */}
-        {mode === "edit" &&
-          layers.crossoverZones &&
-          metadata.crossoverZones.map((zone, i) => (
-            <g key={`crossover-${i}`}>
-              <CrossoverRange samples={racingSamples} section={zone.lowerPath} color="#c084fc" />
-              <CrossoverRange samples={racingSamples} section={zone.upperPath} color="#f472b6" />
-            </g>
-          ))}
-
-        {/* Metadata markers */}
-        {mode === "edit" &&
-          markers.map((marker) => {
-            const position = markerPosition(marker);
-            if (!position) return null;
-            const isSelected = markerRefEquals(marker.ref, selectedMarker);
-            const isPit = marker.pathKind === "pit-lane";
-            return (
-              <g
-                key={`${marker.ref.kind}-${"index" in marker.ref ? marker.ref.index : 0}-${"point" in marker.ref ? marker.ref.point : ""}`}
-                transform={`translate(${position.x}, ${position.y})`}
-                style={{ cursor: "pointer" }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  editor.setSelectedMarker(marker.ref);
-                  editor.setTool("select");
-                }}
-              >
-                {/* Pit-lane points are squares, racing-line points circles. */}
-                {isPit ? (
-                  <rect
-                    x={-markerBaseRadius}
-                    y={-markerBaseRadius}
-                    width={markerBaseRadius * 2}
-                    height={markerBaseRadius * 2}
-                    fill={marker.color}
-                    stroke={isSelected ? "#ffffff" : "#0b0f14"}
-                    strokeWidth={isSelected ? 3 : 1.5}
-                  />
-                ) : (
-                  <circle
-                    r={isSelected ? markerBaseRadius * 1.4 : markerBaseRadius}
-                    fill={marker.color}
-                    stroke={isSelected ? "#ffffff" : "#0b0f14"}
-                    strokeWidth={isSelected ? 3 : 1.5}
-                  />
-                )}
-              </g>
-            );
-          })}
-
-        {/* Geometry anchor handles (visible while a draw tool is active) */}
-        {mode === "edit" &&
-          showAnchors &&
-          anchorsFor(activeDrawPath!).map((anchor, index) => {
-            const isSelected =
-              editor.selectedAnchor?.path === activeDrawPath && editor.selectedAnchor.index === index;
-            const isFirstRacing = activeDrawPath === "racing-line" && index === 0 && drawingInProgress;
-            return (
-              <g key={`anchor-${index}`} transform={`translate(${anchor.x}, ${anchor.y})`}>
-                {/* Highlight the first anchor while drawing: clicking it closes the loop. */}
-                {isFirstRacing && (
-                  <circle r={14} fill="none" stroke="#4ade80" strokeWidth={1.5} strokeDasharray="3 3" />
-                )}
-                <circle
-                  r={isSelected ? 8 : 5.5}
-                  fill={isSelected ? "#ffffff" : "#94a3b8"}
-                  stroke="#0b0f14"
-                  strokeWidth={1.5}
-                  style={{ cursor: "grab" }}
-                  onPointerDown={startAnchorDrag({ path: activeDrawPath!, index })}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </g>
-            );
-          })}
-      </TrackMap>
+        onSelectMarker={onSelectMarker}
+        onStartAnchorDrag={startAnchorDrag}
+        markerPosition={markerPosition}
+      />
 
       {metadata.geometry.racingLine.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-zinc-500">
@@ -428,32 +515,7 @@ export function SvgCanvas({ editor, cars }: { editor: TrackEditorState; cars: Tr
         </div>
       )}
 
-      {/* Hover tooltip */}
-      {hover && hoverDetails && (
-        <div
-          className="pointer-events-none absolute z-20 rounded border border-zinc-600 bg-[#0b0f14]/95 px-2 py-1.5 text-[11px] leading-4 text-zinc-200 shadow-lg"
-          style={{ left: hover.left, top: hover.top }}
-        >
-          <div className="font-mono text-cyan-300">{hover.distance.toFixed(3)}</div>
-          <div className="text-zinc-400">
-            {hover.pathKind === "pit-lane" ? "Pit lane" : "Racing line"}
-          </div>
-          {hover.pathKind === "racing-line" && hoverDetails.sector && (
-            <div>Sector {hoverDetails.sector.sector}</div>
-          )}
-          {hover.pathKind === "racing-line" && hoverDetails.corner && (
-            <div>Near {hoverDetails.corner.name}</div>
-          )}
-          {hover.pathKind === "racing-line" && hoverDetails.elevation !== null && (
-            <div>{hoverDetails.elevation.toFixed(1)} m elevation</div>
-          )}
-          {hover.pathKind === "racing-line" && hoverDetails.crossover && (
-            <div className="text-pink-300">
-              {hoverDetails.crossover.part === "lowerPath" ? "Lower crossover" : "Upper crossover"}
-            </div>
-          )}
-        </div>
-      )}
+      <HoverTooltip hover={hover} details={hoverDetails} />
 
       {/* Ambiguous snap candidate chooser */}
       {editor.pendingSnap && (
@@ -466,6 +528,166 @@ export function SvgCanvas({ editor, cars }: { editor: TrackEditorState; cars: Tr
     </div>
   );
 }
+
+/** Memoized scene so hover `setHover` does not re-reconcile TrackMap. */
+const EditorTrackScene = memo(function EditorTrackScene({
+  metadata,
+  paths,
+  cars,
+  layers,
+  mode,
+  markers,
+  selectedMarker,
+  selectedAnchor,
+  activeDrawPath,
+  showAnchors,
+  drawingInProgress,
+  anchors,
+  racingSamples,
+  markerBaseRadius,
+  svgRef,
+  onSelectMarker,
+  onStartAnchorDrag,
+  markerPosition,
+}: {
+  metadata: TrackMetadata;
+  paths: TrackPaths;
+  cars: TrackMapCar[];
+  layers: TrackEditorState["layers"];
+  mode: TrackEditorState["mode"];
+  markers: MarkerVM[];
+  selectedMarker: MarkerRef | null;
+  selectedAnchor: AnchorRef | null;
+  activeDrawPath: TrackPathKind | null;
+  showAnchors: boolean;
+  drawingInProgress: boolean;
+  anchors: TrackGeometryPoint[];
+  racingSamples: TrackPaths["racingSamples"];
+  markerBaseRadius: number;
+  svgRef: React.RefObject<SVGSVGElement | null>;
+  onSelectMarker: (ref: MarkerRef) => void;
+  onStartAnchorDrag: (anchor: AnchorRef) => (event: React.PointerEvent) => void;
+  markerPosition: (marker: MarkerVM) => { x: number; y: number } | null;
+}) {
+  return (
+    <TrackMap
+      metadata={metadata}
+      paths={paths}
+      cars={cars}
+      showRacingLine={layers.racingLine}
+      showPitLane={layers.pitLane}
+      showSectors={layers.sectors}
+      showBridges={layers.bridgeOverlays}
+      showCars={layers.previewCars}
+      svgRef={svgRef}
+      className="h-full w-full p-2"
+    >
+      {mode === "edit" &&
+        layers.crossoverZones &&
+        metadata.crossoverZones.map((zone, i) => (
+          <g key={`crossover-${i}`}>
+            <CrossoverRange samples={racingSamples} section={zone.lowerPath} color="#c084fc" />
+            <CrossoverRange samples={racingSamples} section={zone.upperPath} color="#f472b6" />
+          </g>
+        ))}
+
+      {mode === "edit" &&
+        markers.map((marker) => {
+          const position = markerPosition(marker);
+          if (!position) return null;
+          const isSelected = markerRefEquals(marker.ref, selectedMarker);
+          const isPit = marker.pathKind === "pit-lane";
+          return (
+            <g
+              key={`${marker.ref.kind}-${"index" in marker.ref ? marker.ref.index : 0}-${"point" in marker.ref ? marker.ref.point : ""}`}
+              transform={`translate(${position.x}, ${position.y})`}
+              style={{ cursor: "pointer" }}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelectMarker(marker.ref);
+              }}
+            >
+              {isPit ? (
+                <rect
+                  x={-markerBaseRadius}
+                  y={-markerBaseRadius}
+                  width={markerBaseRadius * 2}
+                  height={markerBaseRadius * 2}
+                  fill={marker.color}
+                  stroke={isSelected ? "#ffffff" : "#0b0f14"}
+                  strokeWidth={isSelected ? 3 : 1.5}
+                />
+              ) : (
+                <circle
+                  r={isSelected ? markerBaseRadius * 1.4 : markerBaseRadius}
+                  fill={marker.color}
+                  stroke={isSelected ? "#ffffff" : "#0b0f14"}
+                  strokeWidth={isSelected ? 3 : 1.5}
+                />
+              )}
+            </g>
+          );
+        })}
+
+      {mode === "edit" &&
+        showAnchors &&
+        activeDrawPath &&
+        anchors.map((anchor, index) => {
+          const isSelected = selectedAnchor?.path === activeDrawPath && selectedAnchor.index === index;
+          const isFirstRacing = activeDrawPath === "racing-line" && index === 0 && drawingInProgress;
+          return (
+            <g
+              key={`anchor-${index}`}
+              data-anchor-index={index}
+              transform={`translate(${anchor.x}, ${anchor.y})`}
+            >
+              {isFirstRacing && (
+                <circle r={14} fill="none" stroke="#4ade80" strokeWidth={1.5} strokeDasharray="3 3" />
+              )}
+              <circle
+                r={isSelected ? 8 : 5.5}
+                fill={isSelected ? "#ffffff" : "#94a3b8"}
+                stroke="#0b0f14"
+                strokeWidth={1.5}
+                style={{ cursor: "grab" }}
+                onPointerDown={onStartAnchorDrag({ path: activeDrawPath, index })}
+                onClick={(event) => event.stopPropagation()}
+              />
+            </g>
+          );
+        })}
+    </TrackMap>
+  );
+});
+
+const HoverTooltip = memo(function HoverTooltip({
+  hover,
+  details,
+}: {
+  hover: HoverInfo | null;
+  details: HoverDetails | null;
+}) {
+  if (!hover || !details) return null;
+  return (
+    <div
+      className="pointer-events-none absolute z-20 rounded border border-zinc-600 bg-[#0b0f14]/95 px-2 py-1.5 text-[11px] leading-4 text-zinc-200 shadow-lg"
+      style={{ left: hover.left, top: hover.top }}
+    >
+      <div className="font-mono text-cyan-300">{hover.distance.toFixed(3)}</div>
+      <div className="text-zinc-400">{hover.pathKind === "pit-lane" ? "Pit lane" : "Racing line"}</div>
+      {hover.pathKind === "racing-line" && details.sector && <div>Sector {details.sector.sector}</div>}
+      {hover.pathKind === "racing-line" && details.corner && <div>Near {details.corner.name}</div>}
+      {hover.pathKind === "racing-line" && details.elevation !== null && (
+        <div>{details.elevation.toFixed(1)} m elevation</div>
+      )}
+      {hover.pathKind === "racing-line" && details.crossover && (
+        <div className="text-pink-300">
+          {details.crossover.part === "lowerPath" ? "Lower crossover" : "Upper crossover"}
+        </div>
+      )}
+    </div>
+  );
+});
 
 function CrossoverRange({
   samples,

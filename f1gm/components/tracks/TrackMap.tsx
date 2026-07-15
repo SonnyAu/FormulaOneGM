@@ -33,6 +33,15 @@ export type TrackMapCar = {
   color: string;
 };
 
+export type TrackPaths = {
+  racingD: string;
+  pitD: string;
+  racingPath: SVGPathElement | null;
+  pitPath: SVGPathElement | null;
+  racingSamples: PathSample[];
+  pitSamples: PathSample[];
+};
+
 export type TrackMapProps = {
   metadata: TrackMetadata;
   cars?: TrackMapCar[];
@@ -46,6 +55,27 @@ export type TrackMapProps = {
   svgRef?: Ref<SVGSVGElement>;
   /** Extra content rendered inside the SVG, above all track layers. */
   children?: ReactNode;
+  /**
+   * Precomputed path data from a single useTrackPaths() call. When provided,
+   * TrackMap skips its own sampling (editor uses this to avoid double work).
+   */
+  paths?: TrackPaths;
+};
+
+/** Stable empty metadata so TrackMap can call useTrackPaths without sampling when paths are passed in. */
+const SKIP_PATH_METADATA: TrackMetadata = {
+  id: "",
+  name: "",
+  country: "",
+  layoutLengthKm: 0,
+  laps: 0,
+  geometry: { racingLine: [], pitLane: null, smoothed: true },
+  startFinish: { distance: 0 },
+  sectors: [],
+  pit: null,
+  corners: [],
+  elevationProfile: [],
+  crossoverZones: [],
 };
 
 const SECTOR_COLORS = ["#f87171", "#60a5fa", "#facc15", "#4ade80", "#c084fc", "#fb923c"];
@@ -65,7 +95,7 @@ export function rangePoints(samples: PathSample[], start: number, end: number): 
 }
 
 /** Geometry-derived path data + detached measuring elements + sample table. */
-export function useTrackPaths(metadata: TrackMetadata) {
+export function useTrackPaths(metadata: TrackMetadata, sampleCount = 800): TrackPaths {
   const { geometry } = metadata;
   const racingD = useMemo(
     () => geometryToPathD(geometry.racingLine, true, geometry.smoothed),
@@ -84,8 +114,14 @@ export function useTrackPaths(metadata: TrackMetadata) {
     [racingD, geometry.racingLine.length],
   );
   const pitPath = useMemo(() => (pitD ? createDetachedPath(pitD) : null), [pitD]);
-  const racingSamples = useMemo(() => (racingPath ? samplePath(racingPath) : []), [racingPath]);
-  const pitSamples = useMemo(() => (pitPath ? samplePath(pitPath) : []), [pitPath]);
+  const racingSamples = useMemo(
+    () => (racingPath ? samplePath(racingPath, sampleCount) : []),
+    [racingPath, sampleCount],
+  );
+  const pitSamples = useMemo(
+    () => (pitPath ? samplePath(pitPath, sampleCount) : []),
+    [pitPath, sampleCount],
+  );
   return { racingD, pitD, racingPath, pitPath, racingSamples, pitSamples };
 }
 
@@ -102,8 +138,11 @@ export function TrackMap({
   className,
   svgRef,
   children,
+  paths: pathsProp,
 }: TrackMapProps) {
-  const { racingD, pitD, racingPath, pitPath, racingSamples } = useTrackPaths(metadata);
+  // Always call the hook (rules of hooks); skip real sampling when paths are injected.
+  const computedPaths = useTrackPaths(pathsProp ? SKIP_PATH_METADATA : metadata);
+  const { racingD, pitD, racingPath, pitPath, racingSamples } = pathsProp ?? computedPaths;
 
   const projectedCars = useMemo<ProjectedCar[]>(() => {
     if (!showCars) return [];
@@ -122,10 +161,17 @@ export function TrackMap({
     <svg ref={svgRef} viewBox={DRAW_VIEWBOX} className={className} fill="none">
       {racingD && (
         <>
-          <path d={racingD} stroke="#39424f" strokeWidth={24} strokeLinejoin="round" />
+          <path
+            data-track-path="asphalt"
+            d={racingD}
+            stroke="#39424f"
+            strokeWidth={24}
+            strokeLinejoin="round"
+          />
           {showRacingLine && (
             <path
               id={RACING_LINE_ID}
+              data-track-path="racing-line"
               d={racingD}
               stroke="#cbd5e1"
               strokeWidth={3}
@@ -135,7 +181,14 @@ export function TrackMap({
         </>
       )}
       {pitD && showPitLane && (
-        <path id={PIT_LANE_ID} d={pitD} stroke="#67e8f9" strokeWidth={3} strokeDasharray="7 5" />
+        <path
+          id={PIT_LANE_ID}
+          data-track-path="pit-lane"
+          d={pitD}
+          stroke="#67e8f9"
+          strokeWidth={3}
+          strokeDasharray="7 5"
+        />
       )}
 
       {/* Sector range highlights */}
